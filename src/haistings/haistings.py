@@ -57,10 +57,12 @@ def main():
 
     report = buildVulnerabilityReport(5)
 
+    renderedprompt = prompt.format(context=report),
+
     for tok in llm.stream(
-        prompt.invoke({"context": report}),
+        renderedprompt,
     ):
-        print(tok, end="")
+        print(tok.content, end="")
 
 if __name__ == "__main__":
     main()
