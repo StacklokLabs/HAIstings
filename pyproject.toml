@@ -26,4 +26,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-haistings = "haistings.cli:main"
+haistings = "haistings.haistings:main"

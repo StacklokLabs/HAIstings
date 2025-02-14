@@ -8,7 +8,7 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 
-from .k8sreport import buildVulnerabilityReport
+from haistings.k8sreport import buildVulnerabilityReport
 
 def main():
     llm = init_chat_model("this-makes-no-difference-to-codegate",
