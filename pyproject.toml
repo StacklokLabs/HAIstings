@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "haistings"
+version = "0.0.1"
+description = "AI-powered CVE prioritizer"
+authors = ["Stacklok Inc"]
+license = "Apache-2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+langchain = {extras = ["openai"], version = "^0.3.18"}
+langchain-community = "^0.3.17"
+langchainhub = "^0.1.21"
+langgraph = "^0.2.72"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
