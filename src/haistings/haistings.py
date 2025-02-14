@@ -11,10 +11,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from haistings.k8sreport import buildVulnerabilityReport
 
 def main():
-    llm = init_chat_model("this-makes-no-difference-to-codegate",
-                        model_provider="openai",
-                        # CodeGate Muxing API URL
-                        base_url="http://127.0.0.1:8989/v1/mux")
+    llm = init_chat_model(
+        # We're using CodeGate's Muxing feature. No need to select a model here.
+        "this-makes-no-difference-to-codegate",
+        model_provider="openai",
+        # We're using CodeGate, no need to get an API Key here.
+        api_key="fake-api-key",
+        # CodeGate Muxing API URL
+        base_url="http://127.0.0.1:8989/v1/mux")
 
     assistant_text = """"You are a Software Security assistant. Your goal is to
     help infrastructure engineerings to secure their deployments. You are
