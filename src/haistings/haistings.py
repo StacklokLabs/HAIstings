@@ -11,20 +11,6 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from haistings.k8sreport import buildVulnerabilityReport
 
-def main():
-    parser = argparse.ArgumentParser(description="Prioritize container image updates based on vulnerabilities")
-    parser.add_argument("--top", type=int, default=10, help="Number of images to list")
-    parser.add_argument("--model", type=str, default="this-makes-no-difference-to-codegate",
-                        help="Model to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
-    parser.add_argument("--api-key", type=str, default="fake-api-key",
-                        help="API Key to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
-    parser.add_argument("--base-url", type=str, default="http://127.0.0.1:8989/v1/mux",
-                        help="Base URL to use. Points to CodeGate Muxing endpoint by default.")
-    args = parser.parse_args()
-
-    do(args.top, args.model, args.api_key, args.base_url)
-
-
 def do(top: int, model: str, api_key: str, base_url: str):
     llm = init_chat_model(
         # We're using CodeGate's Muxing feature. No need to select a model here.
@@ -96,6 +82,20 @@ def do(top: int, model: str, api_key: str, base_url: str):
         renderedprompt,
     ):
         print(tok.content, end="")
+
+def main():
+    parser = argparse.ArgumentParser(description="Prioritize container image updates based on vulnerabilities")
+    parser.add_argument("--top", type=int, default=10, help="Number of images to list")
+    parser.add_argument("--model", type=str, default="this-makes-no-difference-to-codegate",
+                        help="Model to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
+    parser.add_argument("--api-key", type=str, default="fake-api-key",
+                        help="API Key to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
+    parser.add_argument("--base-url", type=str, default="http://127.0.0.1:8989/v1/mux",
+                        help="Base URL to use. Points to CodeGate Muxing endpoint by default.")
+    args = parser.parse_args()
+
+    do(args.top, args.model, args.api_key, args.base_url)
+
 
 if __name__ == "__main__":
     main()
