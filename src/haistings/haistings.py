@@ -1,3 +1,4 @@
+import argparse
 import os
 
 if not os.environ.get("USER_AGENT"):
@@ -11,14 +12,28 @@ from langchain_core.prompts import ChatPromptTemplate
 from haistings.k8sreport import buildVulnerabilityReport
 
 def main():
+    parser = argparse.ArgumentParser(description="Prioritize container image updates based on vulnerabilities")
+    parser.add_argument("--top", type=int, default=10, help="Number of images to list")
+    parser.add_argument("--model", type=str, default="this-makes-no-difference-to-codegate",
+                        help="Model to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
+    parser.add_argument("--api-key", type=str, default="fake-api-key",
+                        help="API Key to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
+    parser.add_argument("--base-url", type=str, default="http://127.0.0.1:8989/v1/mux",
+                        help="Base URL to use. Points to CodeGate Muxing endpoint by default.")
+    args = parser.parse_args()
+
+    do(args.top, args.model, args.api_key, args.base_url)
+
+
+def do(top: int, model: str, api_key: str, base_url: str):
     llm = init_chat_model(
         # We're using CodeGate's Muxing feature. No need to select a model here.
-        "this-makes-no-difference-to-codegate",
+        model,
         model_provider="openai",
         # We're using CodeGate, no need to get an API Key here.
-        api_key="fake-api-key",
+        api_key=api_key,
         # CodeGate Muxing API URL
-        base_url="http://127.0.0.1:8989/v1/mux")
+        base_url=base_url)
 
     assistant_text = """"You are a Software Security assistant. Your goal is to
     help infrastructure engineerings to secure their deployments. You are
@@ -43,8 +58,26 @@ def main():
     questions and seek clarification when needed. You are also a good listener
     and have a knack for understanding complex technical concepts.
 
+    Aggregate image references of different tags or hashes into the same
+    container image and thus, into the same priority.
+
     End the report with a closing statement that also sounds like something
     Hastings would say.
+
+    Let the format of the report be markdown and lookas follows:
+
+    # Hasting's Security Report
+
+    ## Introduction
+
+    <Introduction goes here>
+
+    ## Summary
+
+    <Summary of the vulnerabilities goes here>
+
+    ## Conclusion
+    <Closing statement goes here>
     """
 
     # Define prompt
@@ -55,7 +88,7 @@ def main():
         ],
     )
 
-    report = buildVulnerabilityReport(5)
+    report = buildVulnerabilityReport(top)
 
     renderedprompt = prompt.format(context=report),
 

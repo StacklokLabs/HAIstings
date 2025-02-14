@@ -16,6 +16,7 @@ langchain-community = "^0.3.17"
 langchainhub = "^0.1.21"
 langgraph = "^0.2.72"
 sh = "^2.2.1"
+argparse = "^1.4.0"
 
 
 [tool.poetry.group.dev.dependencies]
