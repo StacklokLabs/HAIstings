@@ -5,6 +5,9 @@ description = "AI-powered CVE prioritizer"
 authors = ["Stacklok Inc"]
 license = "Apache-2.0"
 readme = "README.md"
+packages = [
+    { include = "haistings", from = "src" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
@@ -21,3 +24,6 @@ pytest = "^8.3.4"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+haistings = "haistings.cli:main"

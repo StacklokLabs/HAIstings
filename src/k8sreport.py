@@ -1,7 +1,7 @@
 import json
 import sh
 
-from typing import List
+from typing import List, Set, Tuple
 
 
 class VulnInfo:
@@ -68,7 +68,7 @@ Vulnerabilities: {}
         return False
 
 
-def gatherVulns() -> tuple[set, int, int]:
+def gatherVulns() -> Tuple[Set[ImageWithVulns], int, int]:
     vulnsjson = sh.kubectl("get", "vulns", "-A", "-o", "json")
     vulns = json.loads(vulnsjson)
 

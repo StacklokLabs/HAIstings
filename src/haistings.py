@@ -6,12 +6,11 @@ if not os.environ.get("USER_AGENT"):
 
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chat_models import init_chat_model
-from langchain_community.document_loaders import TextLoader, Load
 from langchain_core.prompts import ChatPromptTemplate
 
-from haistings import k8sreport
+from .k8sreport import buildVulnerabilityReport
 
-if __name__ == "__main__":
+def main():
     llm = init_chat_model("this-makes-no-difference-to-codegate",
                         model_provider="openai",
                         # CodeGate Muxing API URL
@@ -52,9 +51,12 @@ if __name__ == "__main__":
         ],
     )
 
-    report = k8sreport.buildVulnerabilityReport(5)
+    report = buildVulnerabilityReport(5)
 
     for tok in llm.stream(
         prompt.invoke({"context": report}),
     ):
         print(tok, end="")
+
+if __name__ == "__main__":
+    main()
