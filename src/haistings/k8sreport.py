@@ -122,7 +122,7 @@ def buildreport(imgvulns: set, top: int) -> str:
 
     count = 0
     for img in sorted(imgvulns, reverse=True):
-        out += img
+        out += str(img)
         if count == top:
             break
         count += 1
