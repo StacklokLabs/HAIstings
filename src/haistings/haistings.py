@@ -85,7 +85,7 @@ def do(top: int, model: str, api_key: str, base_url: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Prioritize container image updates based on vulnerabilities")
-    parser.add_argument("--top", type=int, default=10, help="Number of images to list")
+    parser.add_argument("--top", type=int, default=25, help="Number of images to list")
     parser.add_argument("--model", type=str, default="this-makes-no-difference-to-codegate",
                         help="Model to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
     parser.add_argument("--api-key", type=str, default="fake-api-key",
