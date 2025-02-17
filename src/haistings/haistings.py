@@ -53,7 +53,7 @@ def do(top: int, model: str, api_key: str, base_url: str, debug: bool):
 
     Let the format of the report be markdown and lookas follows:
 
-    # Hasting's Security Report
+    # HAIsting's Security Report
 
     ## Introduction
 
