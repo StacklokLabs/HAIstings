@@ -9,18 +9,28 @@ if not os.environ.get("USER_AGENT"):
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph.message import add_messages
+from typing_extensions import Annotated, TypedDict
+from langgraph.graph import START, StateGraph
 
 from haistings.k8sreport import buildVulnerabilityReport
 
-def do(top: int, model: str, api_key: str, base_url: str, debug: bool):
-    llm = init_chat_model(
-        # We're using CodeGate's Muxing feature. No need to select a model here.
-        model,
-        model_provider="openai",
-        # We're using CodeGate, no need to get an API Key here.
-        api_key=api_key,
-        # CodeGate Muxing API URL
-        base_url=base_url)
+rt = None
+
+class State(TypedDict):
+    """State of the conversation."""
+    # The user's question
+    question: str
+    # infrareport is the report of the infrastructure vulnerabilities.
+    infrareport: str
+    # usercontext is the context provided by the user. It helps enhance
+    # the quality of the response by providing information about the
+    # different components of the infrastructure.
+    usercontext: str
+    answer: str
+
+
+class HAIstingsRuntime:
 
     assistant_text = """"You are a Software Security assistant. Your goal is to
     help infrastructure engineerings to secure their deployments. You are
@@ -67,27 +77,66 @@ def do(top: int, model: str, api_key: str, base_url: str, debug: bool):
     <Closing statement goes here>
     """
 
-    # Define prompt
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", assistant_text),
-            ("user", "What container images should be updated first? Do the priorization based on the following context:\n\n{context}"),
-        ],
-    )
+    def __init__(self, top: int, model: str, api_key: str, base_url: str):
+        ## TODO: Make this configurable
+        self.report = lambda: buildVulnerabilityReport(top)
+        self.llm = init_chat_model(
+            # We're using CodeGate's Muxing feature. No need to select a model here.
+            model,
+            model_provider="openai",
+            # We're using CodeGate, no need to get an API Key here.
+            api_key=api_key,
+            # CodeGate Muxing API URL
+            base_url=base_url)
 
-    report = buildVulnerabilityReport(top)
+        # Define prompt
+        self.kickoff_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", self.assistant_text),
+                # Kicks off the conversation
+                ("user", "{question} Do the priorization based on the following context:\n\n{context}\n\n"
+                         "The system administrator also provided the following context which is "
+                         "important for the prioritization:\n\n{usercontext}"),
+            ],
+        )
 
-    if debug:
-        print(f"[DEBUG] Report: {report}", file=sys.stderr)
 
-    msgs = prompt.format_messages(context=report)
+    def run(self):
+        do(self.top, self.model, self.api_key, self.base_url, self.debug)
 
-    if debug:
-        ntokens = llm.get_num_tokens_from_messages(msgs)
-        print(f"[DEBUG] Number of tokens: {ntokens}", file=sys.stderr)
 
-    for tok in llm.stream(msgs):
-        print(tok.content, end="")
+# Define application steps
+def retrieve(state: State):
+    report = rt.report()
+    return {"infrareport": report}
+
+
+def generate_initial(state: State):
+    messages = rt.kickoff_prompt.invoke({
+        "context": state["infrareport"],
+        "question": state["question"],
+        "usercontext": state["usercontext"]
+    })
+    response = rt.llm.invoke(messages)
+    return {"answer": response.content}
+
+
+def do(top: int, model: str, api_key: str, base_url: str, notes: str):
+    global rt
+
+    rt = HAIstingsRuntime(top, model, api_key, base_url)
+
+    graph_builder = StateGraph(State).add_sequence([retrieve, generate_initial])
+    graph_builder.add_edge(START, "retrieve")
+    graph = graph_builder.compile()
+
+    kickoff_question = "What are the top vulnerabilities in the infrastructure?"
+    result = graph.invoke({
+        "question": kickoff_question,
+        "usercontext": notes,
+    })
+    print(result["answer"])
+
 
 def main():
     parser = argparse.ArgumentParser(description="Prioritize container image updates based on vulnerabilities")
@@ -98,10 +147,19 @@ def main():
                         help="API Key to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
     parser.add_argument("--base-url", type=str, default="http://127.0.0.1:8989/v1/mux",
                         help="Base URL to use. Points to CodeGate Muxing endpoint by default.")
+    # Pass notes as a file
+    parser.add_argument("--notes", type=str, help="Path to a file containing notes")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
 
-    do(args.top, args.model, args.api_key, args.base_url, args.debug)
+    # Read notes from file
+    if args.notes:
+        with open(args.notes) as f:
+            notes = f.read()
+    else:
+        notes = ""
+
+    do(args.top, args.model, args.api_key, args.base_url, notes)
 
 
 if __name__ == "__main__":
