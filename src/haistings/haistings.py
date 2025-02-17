@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
@@ -11,7 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from haistings.k8sreport import buildVulnerabilityReport
 
-def do(top: int, model: str, api_key: str, base_url: str):
+def do(top: int, model: str, api_key: str, base_url: str, debug: bool):
     llm = init_chat_model(
         # We're using CodeGate's Muxing feature. No need to select a model here.
         model,
@@ -75,12 +76,13 @@ def do(top: int, model: str, api_key: str, base_url: str):
     )
 
     report = buildVulnerabilityReport(top)
+    msgs = prompt.format_messages(context=report)
 
-    renderedprompt = prompt.format(context=report),
+    if debug:
+        ntokens = llm.get_num_tokens_from_messages(msgs)
+        print(f"[DEBUG] Number of tokens: {ntokens}", file=sys.stderr)
 
-    for tok in llm.stream(
-        renderedprompt,
-    ):
+    for tok in llm.stream(msgs):
         print(tok.content, end="")
 
 def main():
@@ -92,9 +94,10 @@ def main():
                         help="API Key to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
     parser.add_argument("--base-url", type=str, default="http://127.0.0.1:8989/v1/mux",
                         help="Base URL to use. Points to CodeGate Muxing endpoint by default.")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
 
-    do(args.top, args.model, args.api_key, args.base_url)
+    do(args.top, args.model, args.api_key, args.base_url, args.debug)
 
 
 if __name__ == "__main__":
