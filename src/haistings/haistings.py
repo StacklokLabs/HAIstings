@@ -1,6 +1,10 @@
 import argparse
 import os
 import sys
+import tempfile
+import git
+
+from gitingest import ingest
 
 if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
@@ -121,6 +125,25 @@ def generate_initial(state: State):
     return {"answer": response.content}
 
 
+def ingest_repo(token: str, repo_url: str, subdir: str):
+    """Ingest a repository and return a report.
+    Returns its summary, tree, and content."""
+    if not repo_url:
+        raise ValueError("Repository URL is required")
+
+    # Add token to the repo URL if provided
+    if token:
+        repo_url = f"https://{token}@{repo_url.replace("https://", "")}"
+
+    # Create a temporary directory
+    with tempfile.TemporaryDirectory() as temp_dir:
+        try:
+            git.Repo.clone_from(repo_url, temp_dir)
+            return ingest(os.path.join(temp_dir, subdir))
+        except Exception as e:
+            print(f"Error cloning repository: {e}")
+
+
 def do(top: int, model: str, api_key: str, base_url: str, notes: str):
     global rt
 
@@ -150,6 +173,9 @@ def main():
     # Pass notes as a file
     parser.add_argument("--notes", type=str, help="Path to a file containing notes")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--infra-repo", type=str, help="URL to your infrastructure repository")
+    parser.add_argument("--infra-repo-subdir", type=str, help="Subdirectory in the repository to ingest")
+    parser.add_argument("--gh-token", type=str, default="", help="GitHub PAT for the repository")
     args = parser.parse_args()
 
     # Read notes from file
