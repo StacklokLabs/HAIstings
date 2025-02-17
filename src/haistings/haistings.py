@@ -76,6 +76,10 @@ def do(top: int, model: str, api_key: str, base_url: str, debug: bool):
     )
 
     report = buildVulnerabilityReport(top)
+
+    if debug:
+        print(f"[DEBUG] Report: {report}", file=sys.stderr)
+
     msgs = prompt.format_messages(context=report)
 
     if debug:
