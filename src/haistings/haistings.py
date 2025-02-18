@@ -81,7 +81,7 @@ class HAIstingsRuntime:
     <Closing statement goes here>
     """
 
-    def __init__(self, top: int, model: str, api_key: str, base_url: str):
+    def __init__(self, top: int, model: str, model_provider: str, api_key: str, base_url: str):
         # This is not dynamic anymore as we want to access
         # The history of the conversation via the checkpointer.
         tid = "haistings-bot-thread"
@@ -96,7 +96,7 @@ class HAIstingsRuntime:
         self.llm = init_chat_model(
             # We're using CodeGate's Muxing feature. No need to select a model here.
             model,
-            model_provider="openai",
+            model_provider=model_provider,
             # We're using CodeGate, no need to get an API Key here.
             api_key=api_key,
             # CodeGate Muxing API URL
@@ -187,10 +187,10 @@ def ingest_repo(token: str, repo_url: str, subdir: str):
         raise ValueError("Both repo_url and subdir cannot be empty")
 
 
-def do(top: int, model: str, api_key: str, base_url: str, notes: str, checkpointer_driver: str):
+def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, notes: str, checkpointer_driver: str):
     global rt
 
-    rt = HAIstingsRuntime(top, model, api_key, base_url)
+    rt = HAIstingsRuntime(top, model, model_provider, api_key, base_url)
 
     # Add memory
     memory = memory_factory(checkpointer_driver)
@@ -235,6 +235,7 @@ def main():
     parser.add_argument("--top", type=int, default=25, help="Number of images to list")
     parser.add_argument("--model", type=str, default="this-makes-no-difference-to-codegate",
                         help="Model to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
+    parser.add_argument("--model-provider", type=str, default="openai",)
     parser.add_argument("--api-key", type=str, default="fake-api-key",
                         help="API Key to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
     parser.add_argument("--base-url", type=str, default="http://127.0.0.1:8989/v1/mux",
@@ -259,7 +260,7 @@ def main():
     else:
         notes = ""
 
-    do(args.top, args.model, args.api_key, args.base_url, notes, args.checkpoint_saver_driver)
+    do(args.top, args.model, args.model_provider, args.api_key, args.base_url, notes, args.checkpoint_saver_driver)
 
 
 if __name__ == "__main__":
