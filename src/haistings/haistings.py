@@ -13,10 +13,10 @@ if not os.environ.get("USER_AGENT"):
 from gitingest import ingest
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import START, END, StateGraph, MessagesState
 
 from haistings.k8sreport import buildVulnerabilityReport
+from haistings.memory import memory_factory
 
 rt = None
 
@@ -82,8 +82,15 @@ class HAIstingsRuntime:
     """
 
     def __init__(self, top: int, model: str, api_key: str, base_url: str):
-        tid = "haistings-" + str(uuid4())
-        self.rtconfig = {"configurable": {"thread_id": tid}}
+        # This is not dynamic anymore as we want to access
+        # The history of the conversation via the checkpointer.
+        tid = "haistings-bot-thread"
+        self.rtconfig = {
+            "configurable": {
+                "thread_id": tid,
+                "checkpoint_ns": "",
+            },
+        }
         ## TODO: Make this configurable
         self.report = lambda: buildVulnerabilityReport(top)
         self.llm = init_chat_model(
@@ -107,10 +114,6 @@ class HAIstingsRuntime:
         )
 
 
-    def run(self):
-        do(self.top, self.model, self.api_key, self.base_url, self.debug)
-
-
 # Define application steps
 def retrieve(state: State):
     report = rt.report()
@@ -123,7 +126,7 @@ def generate_initial(state: State):
         "question": state["question"],
         "usercontext": state["usercontext"]
     })
-    response = rt.llm.invoke(messages)
+    response = rt.llm.invoke(messages, config=rt.rtconfig)
     print(response.content)
 
     return {
@@ -146,7 +149,7 @@ def extra_userinput(state: State):
 
     messages = messages + prompt_msg.to_messages()
 
-    response = rt.llm.invoke(messages)
+    response = rt.llm.invoke(messages, config=rt.rtconfig)
     print(response.content)
     return {
         "messages": response,
@@ -184,13 +187,13 @@ def ingest_repo(token: str, repo_url: str, subdir: str):
         raise ValueError("Both repo_url and subdir cannot be empty")
 
 
-def do(top: int, model: str, api_key: str, base_url: str, notes: str):
+def do(top: int, model: str, api_key: str, base_url: str, notes: str, checkpointer_driver: str):
     global rt
 
     rt = HAIstingsRuntime(top, model, api_key, base_url)
 
     # Add memory
-    memory = MemorySaver()
+    memory = memory_factory(checkpointer_driver)
 
     graph_builder = StateGraph(State)
     # Nodes
@@ -242,6 +245,11 @@ def main():
     parser.add_argument("--infra-repo", type=str, help="URL to your infrastructure repository")
     parser.add_argument("--infra-repo-subdir", type=str, help="Subdirectory in the repository to ingest")
     parser.add_argument("--gh-token", type=str, default="", help="GitHub PAT for the repository")
+
+    # Persistence
+    parser.add_argument("--checkpoint-saver-driver", type=str, default="memory",
+                        choices=["memory", "sqlite"],
+                        help="Checkpoint saver driver to use")
     args = parser.parse_args()
 
     # Read notes from file
@@ -251,7 +259,7 @@ def main():
     else:
         notes = ""
 
-    do(args.top, args.model, args.api_key, args.base_url, notes)
+    do(args.top, args.model, args.api_key, args.base_url, notes, args.checkpoint_saver_driver)
 
 
 if __name__ == "__main__":
