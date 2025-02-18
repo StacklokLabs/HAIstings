@@ -2,27 +2,26 @@ import argparse
 import os
 import sys
 import tempfile
-import git
 
-from gitingest import ingest
+from uuid import uuid4
 
 if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
     os.environ["USER_AGENT"] = "HAIstings/0.0.1"
 
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from gitingest import ingest
 from langchain.chat_models import init_chat_model
-from langchain_core.prompts import ChatPromptTemplate
-from langgraph.graph.message import add_messages
-from typing_extensions import Annotated, TypedDict
-from langgraph.graph import START, StateGraph
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import START, END, StateGraph, MessagesState
 
 from haistings.k8sreport import buildVulnerabilityReport
 
 rt = None
 
-class State(TypedDict):
+class State(MessagesState):
     """State of the conversation."""
+
     # The user's question
     question: str
     # infrareport is the report of the infrastructure vulnerabilities.
@@ -82,6 +81,8 @@ class HAIstingsRuntime:
     """
 
     def __init__(self, top: int, model: str, api_key: str, base_url: str):
+        tid = "haistings-" + str(uuid4())
+        self.rtconfig = {"configurable": {"thread_id": tid}}
         ## TODO: Make this configurable
         self.report = lambda: buildVulnerabilityReport(top)
         self.llm = init_chat_model(
@@ -122,7 +123,43 @@ def generate_initial(state: State):
         "usercontext": state["usercontext"]
     })
     response = rt.llm.invoke(messages)
-    return {"answer": response.content}
+    print(response.content)
+
+    return {
+        "messages": response,
+        "answer": response.content,
+    }
+
+
+def extra_userinput(state: State):
+    """Based on the user input, the assistant will provide a response."""
+    messages = state["messages"]
+    extra = input("Please provide more information to help the assistant provide a better response: ")
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("user", "Here's extra context to help with the prioritization: {extra}. "
+                 "Given this new information, can you provide a better response?"),
+    ])
+
+    prompt_msg = prompt.invoke({"extra": extra})
+
+    messages = messages + prompt_msg.to_messages()
+
+    response = rt.llm.invoke(messages)
+    print(response.content)
+    return {
+        "messages": response,
+        "answer": response.content,
+    }
+
+
+def needs_more_info(state: State):
+    print("Is there more information needed? Note that more information "
+          "will help the assistant provide a better response.")
+    should_continue = input("Type 'yes' or 'no': ").lower() == "yes"
+    if should_continue:
+        return "extra_userinput"
+    return END
 
 
 def ingest_repo(token: str, repo_url: str, subdir: str):
@@ -149,16 +186,42 @@ def do(top: int, model: str, api_key: str, base_url: str, notes: str):
 
     rt = HAIstingsRuntime(top, model, api_key, base_url)
 
-    graph_builder = StateGraph(State).add_sequence([retrieve, generate_initial])
+    # Add memory
+    memory = MemorySaver()
+
+    graph_builder = StateGraph(State)
+    # Nodes
+    graph_builder.add_node("retrieve", retrieve)
+    graph_builder.add_node("generate_initial", generate_initial)
+    graph_builder.add_node("extra_userinput", extra_userinput)
+
+    # Edges
     graph_builder.add_edge(START, "retrieve")
-    graph = graph_builder.compile()
+    graph_builder.add_edge("retrieve", "generate_initial")
+
+    # potentially finish execution after initial report.
+    graph_builder.add_conditional_edges(
+        "generate_initial",
+        needs_more_info,
+        ["extra_userinput", END])
+
+    # allow for finishing execution after extra user input.
+    graph_builder.add_conditional_edges(
+        "extra_userinput",
+        needs_more_info,
+        ["extra_userinput", END]
+    )
+
+    # Compile the graph
+    graph = graph_builder.compile(checkpointer=memory)
 
     kickoff_question = "What are the top vulnerabilities in the infrastructure?"
-    result = graph.invoke({
+
+    # Start the conversation
+    graph.invoke( {
         "question": kickoff_question,
         "usercontext": notes,
-    })
-    print(result["answer"])
+    }, config=rt.rtconfig)
 
 
 def main():
