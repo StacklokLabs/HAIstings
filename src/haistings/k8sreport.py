@@ -29,17 +29,17 @@ class ImageWithVulns:
 
     def __str__(self):
         if self.tag is None:
-            return """image: {}/{}@{}"
-namespace: {}
-Critical vulns: {}
-High vulns: {}
-Vulnerability IDs: {}
+            return """- image: {}/{}@{}"
+  namespace: {}
+  Critical vulns: {}
+  High vulns: {}
+  Vulnerability IDs: {}
 """.format(self.srv, self.img, self.digest, self.namespace, self.criticalVulns, self.highVulns, ", ".join((v.id for v in self.vulns)))
-        return """image: {}/{}:{}
-namespace: {}
-Critical vulns: {}
-High vulns: {}
-Vulnerability IDs: {}
+        return """- image: {}/{}:{}
+  namespace: {}
+  Critical vulns: {}
+  High vulns: {}
+  Vulnerability IDs: {}
 """.format(self.srv, self.img, self.tag, self.namespace, self.criticalVulns, self.highVulns, ", ".join((v.id for v in self.vulns)))
 
     def __repr__(self):
@@ -144,7 +144,7 @@ def buildreport(res: ReportResult, top: int) -> str:
         count += 1
 
     out += "\n\n## Vulnerability list\n\n"
-    out += "\n".join(str(vuln) for vuln in res.vuln_list)
+    out += "\n".join(str(vuln) for _, vuln in res.vuln_list.items())
 
     out += "\n\n## Summary\n\n"
     out += "Total critical vulnerabilities: {}\n".format(res.total_critical)
