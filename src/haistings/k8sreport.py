@@ -1,7 +1,7 @@
 import json
 import sh
 
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Dict
 
 
 class VulnInfo:
@@ -15,7 +15,6 @@ class VulnInfo:
   - ID: {}
     Title: {}
     Severity: {}""".format(self.id, self.title, self.severity)
-
 
 class ImageWithVulns:
     def __init__(self, srv: str, img: str, digest: str, tag: str, criticalVulns: int, highVulns: int, namespace: str, vulns: List[VulnInfo] = []):
@@ -34,14 +33,14 @@ class ImageWithVulns:
 namespace: {}
 Critical vulns: {}
 High vulns: {}
-Vulnerabilities: {}
-""".format(self.srv, self.img, self.digest, self.namespace, self.criticalVulns, self.highVulns, "\n".join((str(v) for v in self.vulns)))
+Vulnerability IDs: {}
+""".format(self.srv, self.img, self.digest, self.namespace, self.criticalVulns, self.highVulns, ", ".join((v.id for v in self.vulns)))
         return """image: {}/{}:{}
 namespace: {}
 Critical vulns: {}
 High vulns: {}
-Vulnerabilities: {}
-""".format(self.srv, self.img, self.tag, self.namespace, self.criticalVulns, self.highVulns, "\n".join((str(v) for v in self.vulns)))
+Vulnerability IDs: {}
+""".format(self.srv, self.img, self.tag, self.namespace, self.criticalVulns, self.highVulns, ", ".join((v.id for v in self.vulns)))
 
     def __repr__(self):
         return self.__str__()
@@ -68,13 +67,23 @@ Vulnerabilities: {}
         return False
 
 
-def gatherVulns() -> Tuple[Set[ImageWithVulns], int, int]:
+class ReportResult:
+    def __init__(self, images_with_vulns: Set[ImageWithVulns], vuln_list: Dict[str, VulnInfo], total_critical: int, total_high: int):
+        self.images_with_vulns = images_with_vulns
+        self.vuln_list = vuln_list
+        self.total_critical = total_critical
+        self.total_high = total_high
+
+
+def gatherVulns() -> ReportResult:
     vulnsjson = sh.kubectl("get", "vulns", "-A", "-o", "json")
     vulns = json.loads(vulnsjson)
 
     imgvulns = set()
     totalCritical = 0
     totalHigh = 0
+
+    unique_vulns = dict()
 
     for vuln in vulns["items"]:
         if ImageWithVulns.hash(
@@ -93,13 +102,17 @@ def gatherVulns() -> Tuple[Set[ImageWithVulns], int, int]:
             vuln["report"]["summary"]["highCount"],
             vuln["metadata"]["namespace"],
             vulnList)
-        
+
+        for vuln in img.vulns:
+            if vuln.id not in unique_vulns:
+                unique_vulns[vuln.id] = vuln
+
         totalCritical += img.criticalVulns
         totalHigh += img.highVulns
 
         imgvulns.add(img)
 
-    return imgvulns, totalCritical, totalHigh
+    return ReportResult(imgvulns, unique_vulns, totalCritical, totalHigh)
 
 
 def getVulnList(vulns: list) -> List[VulnInfo]:
@@ -109,9 +122,12 @@ def getVulnList(vulns: list) -> List[VulnInfo]:
     return vulnList
 
 
-def buildreport(imgvulns: set, top: int) -> str:
-    out = ""
+def buildreport(res: ReportResult, top: int) -> str:
+    out = "# Vulnerability report\n\n"
+
     out += "## Showing top {} images with most critical vulnerabilities".format(top)
+
+    imgvulns = res.images_with_vulns
 
     if len(imgvulns) == 0:
         out += "\nNo vulnerabilities found"
@@ -127,10 +143,17 @@ def buildreport(imgvulns: set, top: int) -> str:
             break
         count += 1
 
+    out += "\n\n## Vulnerability list\n\n"
+    out += "\n".join(str(vuln) for vuln in res.vuln_list)
+
+    out += "\n\n## Summary\n\n"
+    out += "Total critical vulnerabilities: {}\n".format(res.total_critical)
+    out += "Total high vulnerabilities: {}\n".format(res.total_high)
+
     return out
 
 
 def buildVulnerabilityReport(top: int) -> str:
-    imgvulns, _, _ = gatherVulns()
+    res = gatherVulns()
 
-    return buildreport(imgvulns, top)
+    return buildreport(res, top)
