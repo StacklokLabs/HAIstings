@@ -2,10 +2,7 @@ import argparse
 import os
 import sys
 import tempfile
-import git
-import pdb
 
-from uuid import uuid4
 
 if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
@@ -13,14 +10,34 @@ if not os.environ.get("USER_AGENT"):
 
 from gitingest import ingest
 from langchain.chat_models import init_chat_model
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.graph import START, END, StateGraph, MessagesState
+from pydantic import BaseModel, Field
+from enum import Enum
+from uuid import uuid4
+import git
 
 from haistings.k8sreport import buildVulnerabilityReport
 from haistings.memory import memory_factory
 
 rt = None
+
+
+class ContinueConversation(Enum):
+    YES = "yes"
+    NO = "no"
+    UNSURE = "unsure"
+
+
+class ExtraInfoOrStop(BaseModel):
+    """Extra information or stop the conversation."""
+    explanation: str = Field(
+        description="The agent's explanation for the decision")
+    continue_conversation: ContinueConversation = Field(
+        description="Indicates if the user wants to provider more context, "
+        "conversation or get more guidance")
+
 
 class State(MessagesState):
     """State of the conversation."""
@@ -34,6 +51,7 @@ class State(MessagesState):
     # different components of the infrastructure.
     usercontext: str
     answer: str
+    continue_conversation: ContinueConversation = ContinueConversation.UNSURE
 
 
 class HAIstingsRuntime:
@@ -151,12 +169,46 @@ def extra_userinput(state: State):
     """Based on the user input, the assistant will provide a response."""
     messages = state["messages"]
     inputmsg = text_separator() + """
-Please provide more information to help the assistant provide a better response:
+Is there more information needed? Note that more information will help the assistant provide a better response.
 
 > """
     extra = input(inputmsg)
 
     print(text_separator())
+
+    structured_llm = rt.llm.with_structured_output(ExtraInfoOrStop)
+    eios = structured_llm.invoke("""
+Based on the following text: \"{extra}\"
+Does the user want to provide more information or stop the conversation?
+
+statements such as \"no\" or \"exit\" would indicate that 
+the user wants to end the conversation.
+
+If the user asks a question or indicates they're not sure, then it means
+they're unsure.
+
+If the user talks about some infrastructure component, changes in priorization
+or provides more context, then it means they want to provide more information
+and want to continue the conversation.
+""".format(extra=extra),
+        config=rt.rtconfig)
+
+    if eios.continue_conversation == ContinueConversation.NO:
+        return {
+            "messages": messages,
+            "answer": "The user has decided to stop the conversation.",
+            "continue_conversation": eios.continue_conversation,
+        }
+    elif eios.continue_conversation == ContinueConversation.UNSURE:
+        print("The idea is to add more context on the given infrastructure to "
+              "help the assistant provide a better response.\n\n"
+              "You can also provide more context on the vulnerabilities "
+              "as well as override the priorization based on the new context.")
+        return {
+            "messages": messages,
+            "answer": "The user is unsure about continuing the conversation.",
+            "continue_conversation": eios.continue_conversation,
+        }
 
     prompt = ChatPromptTemplate.from_messages([
         ("user", "Here's extra context to help with the prioritization by the system administrator:\n\n"
@@ -172,18 +224,14 @@ Please provide more information to help the assistant provide a better response:
     return {
         "messages": prompt_msg.to_messages() + [response],
         "answer": response.content,
+        "continue_conversation": eios.continue_conversation
     }
 
 
 def needs_more_info(state: State):
-    inputmsg = text_separator() + """
-Is there more information needed? Note that more information will help the assistant provide a better response.
-
-Type 'yes' or 'no': """
-    should_continue = input(inputmsg).lower() == "yes"
-    if should_continue:
-        return "extra_userinput"
-    return END
+    if state["continue_conversation"] == ContinueConversation.NO:
+        return END
+    return "extra_userinput"
 
 
 def ingest_repo(token: str, repo_url: str, subdir: str):
@@ -228,12 +276,7 @@ def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, n
     # Edges
     graph_builder.add_edge(START, "retrieve")
     graph_builder.add_edge("retrieve", "generate_initial")
-
-    # potentially finish execution after initial report.
-    graph_builder.add_conditional_edges(
-        "generate_initial",
-        needs_more_info,
-        ["extra_userinput", END])
+    graph_builder.add_edge("generate_initial", "extra_userinput")
 
     # allow for finishing execution after extra user input.
     graph_builder.add_conditional_edges(
