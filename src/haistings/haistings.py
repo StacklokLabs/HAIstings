@@ -138,7 +138,6 @@ def generate_initial(state: State):
             "usercontext": state["usercontext"]
         }).to_messages()
     response = rt.llm.invoke(messages, config=rt.rtconfig)
-    print(response.content)
 
     return {
         "messages": messages + [response],
@@ -148,8 +147,13 @@ def generate_initial(state: State):
 
 def extra_userinput(state: State):
     """Based on the user input, the assistant will provide a response."""
-    messages = state["messages"]
-    extra = input("Please provide more information to help the assistant provide a better response: ")
+    inputmsg = text_separator() + """
+Please provide more information to help the assistant provide a better response:
+
+> """
+    extra = input(inputmsg)
+
+    print(text_separator())
 
     prompt = ChatPromptTemplate.from_messages([
         ("user", "Here's extra context to help with the prioritization by the system administrator:\n\n"
@@ -158,10 +162,10 @@ def extra_userinput(state: State):
     ])
 
     prompt_msg = prompt.invoke({"extra": extra})
+    messages = state["messages"]
     messages = messages + prompt_msg.to_messages()
 
     response = rt.llm.invoke(messages, config=rt.rtconfig)
-    print(response.content)
     return {
         "messages": messages + [response],
         "answer": response.content,
@@ -169,9 +173,11 @@ def extra_userinput(state: State):
 
 
 def needs_more_info(state: State):
-    print("Is there more information needed? Note that more information "
-          "will help the assistant provide a better response.")
-    should_continue = input("Type 'yes' or 'no': ").lower() == "yes"
+    inputmsg = text_separator() + """
+Is there more information needed? Note that more information will help the assistant provide a better response.
+
+Type 'yes' or 'no': """
+    should_continue = input(inputmsg).lower() == "yes"
     if should_continue:
         return "extra_userinput"
     return END
@@ -196,6 +202,10 @@ def ingest_repo(token: str, repo_url: str, subdir: str):
         return ingest(subdir)
     else:
         raise ValueError("Both repo_url and subdir cannot be empty")
+
+
+def text_separator() -> str:
+    return "\n\n" + "=" * 120
 
 
 def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, notes: str, checkpointer_driver: str):
@@ -243,12 +253,17 @@ def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, n
     kickoff_question = "What are the top vulnerabilities in the infrastructure?"
 
     # Start the conversation
-    for chunk in graph.stream( {
-            "question": kickoff_question,
-            "usercontext": notes,
-        }, config=rt.rtconfig, stream_mode="updates"):
-        pass
-
+    for chunk in graph.stream({
+        "question": kickoff_question,
+        "usercontext": notes,
+    }, config=rt.rtconfig, stream_mode="messages"):
+        # If it's a tuple, get the first item
+        if isinstance(chunk, tuple):
+            chunk = chunk[0]
+        if hasattr(chunk, "content"):
+            print(chunk.content, end="")
+        else:
+            print(chunk, end="")
 
 
 def main():
