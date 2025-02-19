@@ -13,6 +13,7 @@ if not os.environ.get("USER_AGENT"):
 from gitingest import ingest
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage
 from langgraph.graph import START, END, StateGraph, MessagesState
 
 from haistings.k8sreport import buildVulnerabilityReport
@@ -116,21 +117,31 @@ class HAIstingsRuntime:
 
 # Define application steps
 def retrieve(state: State):
+    if len(state["messages"]) > 0:
+        return {}
+
     report = rt.report()
     return {"infrareport": report}
 
 
 def generate_initial(state: State):
-    messages = rt.kickoff_prompt.invoke({
-        "context": state["infrareport"],
-        "question": state["question"],
-        "usercontext": state["usercontext"]
-    })
+    # Revisit the previous conversation
+    if len(state["messages"]) > 0:
+        messages = state["messages"] + \
+           [HumanMessage("Given all the context available, especially the extra "
+                         "context provided by the system administrator, "
+                         "Can you generate another prioritized report?")]
+    else:
+        messages = rt.kickoff_prompt.invoke({
+            "context": state["infrareport"],
+            "question": state["question"],
+            "usercontext": state["usercontext"]
+        }).to_messages()
     response = rt.llm.invoke(messages, config=rt.rtconfig)
     print(response.content)
 
     return {
-        "messages": response,
+        "messages": messages + [response],
         "answer": response.content,
     }
 
@@ -141,18 +152,18 @@ def extra_userinput(state: State):
     extra = input("Please provide more information to help the assistant provide a better response: ")
 
     prompt = ChatPromptTemplate.from_messages([
-        ("user", "Here's extra context to help with the prioritization: {extra}. "
+        ("user", "Here's extra context to help with the prioritization by the system administrator:\n\n"
+                 "{extra}.\n\n"
                  "Given this new information, can you provide a better response?"),
     ])
 
     prompt_msg = prompt.invoke({"extra": extra})
-
     messages = messages + prompt_msg.to_messages()
 
     response = rt.llm.invoke(messages, config=rt.rtconfig)
     print(response.content)
     return {
-        "messages": response,
+        "messages": messages + [response],
         "answer": response.content,
     }
 
@@ -221,13 +232,23 @@ def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, n
     # Compile the graph
     graph = graph_builder.compile(checkpointer=memory)
 
+    # Determine if we can continue from a previous state
+    all_states = [s for s in graph.get_state_history(rt.rtconfig)]
+
+    if len(all_states) >= 1:
+        # Override the configuration with the last state
+        rt.rtconfig = all_states[0].config
+        print("Starting from checkpoint: {}".format(rt.rtconfig["configurable"]["checkpoint_id"]))
+
     kickoff_question = "What are the top vulnerabilities in the infrastructure?"
 
     # Start the conversation
-    graph.invoke( {
-        "question": kickoff_question,
-        "usercontext": notes,
-    }, config=rt.rtconfig)
+    for chunk in graph.stream( {
+            "question": kickoff_question,
+            "usercontext": notes,
+        }, config=rt.rtconfig, stream_mode="updates"):
+        pass
+
 
 
 def main():
