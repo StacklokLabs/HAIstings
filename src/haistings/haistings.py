@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import re
+import sys
 
 if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
@@ -20,6 +21,7 @@ import git
 
 from haistings.k8sreport import buildVulnerabilityReport
 from haistings.memory import memory_factory
+from haistings.repo_ingest import ingest
 
 rt = None
 
@@ -41,6 +43,8 @@ class State(MessagesState):
     # the quality of the response by providing information about the
     # different components of the infrastructure.
     usercontext: str
+    # ingested_repo is the infra repository that was ingested.
+    ingested_repo: str
     answer: str
     continue_conversation: ContinueConversation = ContinueConversation.UNSURE
 
@@ -92,7 +96,8 @@ class HAIstingsRuntime:
     <Closing statement goes here>
     """
 
-    def __init__(self, top: int, model: str, model_provider: str, api_key: str, base_url: str):
+    def __init__(self, top: int, model: str, model_provider: str, api_key: str, base_url: str,
+                 repo_url: str = None, repo_subdir: str = None, gh_token: str = None):
         # This is not dynamic anymore as we want to access
         # The history of the conversation via the checkpointer.
         tid = "haistings-bot-thread"
@@ -104,6 +109,7 @@ class HAIstingsRuntime:
         }
         ## TODO: Make this configurable
         self.report = lambda: buildVulnerabilityReport(top)
+        self.ingest_repo = lambda: ingest(gh_token, repo_url, repo_subdir)
         self.llm = init_chat_model(
             # We're using CodeGate's Muxing feature. No need to select a model here.
             model,
@@ -118,9 +124,14 @@ class HAIstingsRuntime:
             [
                 ("system", self.assistant_text),
                 # Kicks off the conversation
-                ("user", "{question} Do the priorization based on the following context:\n\n{context}\n\n"
+                ("user", "{question} Do the prioritization based on the following context:\n\n{context}\n\n"
                          "The system administrator also provided the following context which is "
-                         "important for the prioritization:\n\n{usercontext}"),
+                         "important for the prioritization:\n\n{usercontext}"
+                         # "In addition, this is the content of the Kubernetes configuration repository. "
+                         # "Use it only after you formed your answer based on the previous context. "
+                         # "Use it only to enhance the final report by making it more informative, "
+                         # "for example: Component X with CVE Y is described in file Z:\n\n{ingested_repo}\n\n."
+                ),
             ],
         )
 
@@ -131,7 +142,24 @@ def retrieve(state: State):
         return {}
 
     report = rt.report()
-    return {"infrareport": report}
+
+    # Get repository context if configured in runtime
+    ingested_repo = "Unfortunately, no repository context was provided."
+
+    try:
+        summary, tree, content = rt.ingest_repo()
+        ingested_repo = f"""Repository Context:
+    Summary: {summary}
+    Structure: {tree}
+    Content: {content}"""
+        print(f"Ingested repository successfully.")
+    except Exception as e:
+        print(f"Warning: Failed to ingest repository: {e}", file=sys.stderr)
+
+    return {
+        "infrareport": report,
+        "ingested_repo": ingested_repo
+    }
 
 
 def generate_initial(state: State):
@@ -144,6 +172,7 @@ def generate_initial(state: State):
     else:
         messages = rt.kickoff_prompt.invoke({
             "context": state["infrareport"],
+            "ingested_repo": state["ingested_repo"],
             "question": state["question"],
             "usercontext": state["usercontext"]
         }).to_messages()
@@ -288,10 +317,11 @@ def strip_code_markdown(text: str) -> str:
     return re.sub(r"```\w+?\n(.*?)```", r"\1", text, flags=re.DOTALL)
 
 
-def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, notes: str, checkpointer_driver: str):
+def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, notes: str, checkpointer_driver: str,
+       repo_url: str = None, repo_subdir: str = None, gh_token: str = None):
     global rt
 
-    rt = HAIstingsRuntime(top, model, model_provider, api_key, base_url)
+    rt = HAIstingsRuntime(top, model, model_provider, api_key, base_url, repo_url, repo_subdir, gh_token)
 
     # Add memory
     memory = memory_factory(checkpointer_driver)
@@ -365,7 +395,8 @@ def main():
     else:
         notes = ""
 
-    do(args.top, args.model, args.model_provider, args.api_key, args.base_url, notes, args.checkpoint_saver_driver)
+    do(args.top, args.model, args.model_provider, args.api_key, args.base_url, notes, args.checkpoint_saver_driver,
+       args.infra_repo, args.infra_repo_subdir, args.gh_token)
 
 
 if __name__ == "__main__":
