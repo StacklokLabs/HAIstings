@@ -127,7 +127,10 @@ class HAIstingsRuntime:
                 ("user", "{question} Do the prioritization based on the following context:\n\n{context}\n\n"
                          "The system administrator also provided the following context which is "
                          "important for the prioritization:\n\n{usercontext}"
-                         "In addition, this is the content of the Kubernetes configuration repository. Use it only after you formed your answer based on the previous context. Use it only to enhance the final report by making it more informative, for example: Component X with CVE Y is described in file Z:\n\n{ingested_repo}\n\n."
+                         # "In addition, this is the content of the Kubernetes configuration repository. "
+                         # "Use it only after you formed your answer based on the previous context. "
+                         # "Use it only to enhance the final report by making it more informative, "
+                         # "for example: Component X with CVE Y is described in file Z:\n\n{ingested_repo}\n\n."
                 ),
             ],
         )
