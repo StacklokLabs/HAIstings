@@ -1,8 +1,8 @@
 import argparse
+import json
 import os
-import sys
 import tempfile
-
+import re
 
 if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
@@ -28,15 +28,6 @@ class ContinueConversation(Enum):
     YES = "yes"
     NO = "no"
     UNSURE = "unsure"
-
-
-class ExtraInfoOrStop(BaseModel):
-    """Extra information or stop the conversation."""
-    explanation: str = Field(
-        description="The agent's explanation for the decision")
-    continue_conversation: ContinueConversation = Field(
-        description="Indicates if the user wants to provider more context, "
-        "conversation or get more guidance")
 
 
 class State(MessagesState):
@@ -157,7 +148,7 @@ def generate_initial(state: State):
             "usercontext": state["usercontext"]
         }).to_messages()
     response = rt.llm.invoke(messages, config=rt.rtconfig)
-    print(response.content)
+    print(preprocess_response(response.content))
 
     return {
         "messages": messages + [response],
@@ -176,42 +167,50 @@ Is there more information needed? Note that more information will help the assis
 
     print(text_separator())
 
-    structured_llm = rt.llm.with_structured_output(ExtraInfoOrStop)
     try:
-        eios = structured_llm.invoke("""
-    Based on the following text: \"{extra}\"
-    Does the user want to provide more information or stop the conversation?
+        response = rt.llm.invoke("""
+Based on the following text that the user typed: \"%s\"
+Does the user want to provide more information or stop the conversation?
 
-    Before this, the user was given a priority list of components and their vulnerabilities,
-    and this tool is meant to help you prioritize.
+Before this, the user was given a priority list of components and their vulnerabilities,
+and this tool is meant to help you prioritize.
 
-    statements such as \"no\" or \"exit\" would indicate that 
-    the user wants to end the conversation.
+If the user typed text such as \"no\" \"exit\", or an empty string, this would indicate that 
+the user wants to end the conversation.
 
-    If the user asks a question or indicates they're not sure, then it means
-    they're unsure. Note that this is explicitly only when they ask
-    questions about this tool, and not a software component.
+If the user asks a question or indicates they're not sure, then it means
+they're unsure. Note that this is explicitly only when they ask
+questions about this tool, and not a software component.
 
-    If the user talks about some infrastructure component, changes in priorization
-    or provides more context, then it means they want to provide more information
-    and want to continue the conversation. The user might also want to stop
-    showing a component from the list, that would also mean they want to
-    continue the conversation.
-    """.format(extra=extra),
+If the user talks about some infrastructure component, changes in priorization
+or provides more context, then it means they want to provide more information
+and want to continue the conversation. The user might also want to stop
+showing a component from the list, that would also mean they want to
+continue the conversation.
+
+Output the answer with a JSON format that looks as follows:
+{
+    "continue_conversation": "yes" | "no" | "unsure",
+    "explanation": "<why the text was interpreted the way it was>"
+}
+
+ONLY answer with that JSON and don't provide any other information.
+DO NOT put the JSON within markdown tags or any other formatting.
+""" % extra,
             config=rt.rtconfig)
-    except Exception:
-        eios = ExtraInfoOrStop(
-            explanation="Overriding this to continue due to LLM error",
-            continue_conversation=ContinueConversation.YES,
-        )
+        processed = strip_code_markdown(preprocess_response(response.content))
+        resp = json.loads(processed)
+        continue_conversation = ContinueConversation(resp["continue_conversation"])
+    except Exception as e:
+        continue_conversation = continue_conversation=ContinueConversation.YES
 
-    if eios.continue_conversation == ContinueConversation.NO:
+    if continue_conversation == ContinueConversation.NO:
         return {
             "messages": messages,
             "answer": "The user has decided to stop the conversation.",
-            "continue_conversation": eios.continue_conversation,
+            "continue_conversation": continue_conversation,
         }
-    elif eios.continue_conversation == ContinueConversation.UNSURE:
+    elif continue_conversation == ContinueConversation.UNSURE:
         print("The idea is to add more context on the given infrastructure to "
               "help the assistant provide a better response.\n\n"
               "You can also provide more context on the vulnerabilities "
@@ -219,7 +218,7 @@ Is there more information needed? Note that more information will help the assis
         return {
             "messages": messages,
             "answer": "The user is unsure about continuing the conversation.",
-            "continue_conversation": eios.continue_conversation,
+            "continue_conversation": continue_conversation,
         }
 
     prompt = ChatPromptTemplate.from_messages([
@@ -232,11 +231,12 @@ Is there more information needed? Note that more information will help the assis
     messages = messages + prompt_msg.to_messages()
 
     response = rt.llm.invoke(messages, config=rt.rtconfig)
-    print(response.content)
+    print(preprocess_response(response.content))
+
     return {
         "messages": prompt_msg.to_messages() + [response],
         "answer": response.content,
-        "continue_conversation": eios.continue_conversation
+        "continue_conversation": continue_conversation
     }
 
 
@@ -269,6 +269,23 @@ def ingest_repo(token: str, repo_url: str, subdir: str):
 
 def text_separator() -> str:
     return "\n\n" + "=" * 120
+
+
+def preprocess_response(response: str) -> str:
+    """Preprocesses the response coming from an LLM.
+    
+    In this case, it'll only search for thinking tokens and remove them."""
+
+    # Remove thinking tokens. These are all the characters between the <think> and </think> tags
+    # Note that we have to match multiline strings
+    # DOTALL makes '.' match newlines as well
+    pattern = r"<think>.*?</think>"
+    return re.sub(pattern, "", response, flags=re.DOTALL)
+
+
+def strip_code_markdown(text: str) -> str:
+    """Strips code markdown tags from a text."""
+    return re.sub(r"```\w+?\n(.*?)```", r"\1", text, flags=re.DOTALL)
 
 
 def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, notes: str, checkpointer_driver: str):
