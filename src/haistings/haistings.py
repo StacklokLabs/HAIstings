@@ -177,27 +177,33 @@ Is there more information needed? Note that more information will help the assis
     print(text_separator())
 
     structured_llm = rt.llm.with_structured_output(ExtraInfoOrStop)
-    eios = structured_llm.invoke("""
-Based on the following text: \"{extra}\"
-Does the user want to provide more information or stop the conversation?
+    try:
+        eios = structured_llm.invoke("""
+    Based on the following text: \"{extra}\"
+    Does the user want to provide more information or stop the conversation?
 
-Before this, the user was given a priority list of components and their vulnerabilities,
-and this tool is meant to help you prioritize.
+    Before this, the user was given a priority list of components and their vulnerabilities,
+    and this tool is meant to help you prioritize.
 
-statements such as \"no\" or \"exit\" would indicate that 
-the user wants to end the conversation.
+    statements such as \"no\" or \"exit\" would indicate that 
+    the user wants to end the conversation.
 
-If the user asks a question or indicates they're not sure, then it means
-they're unsure. Note that this is explicitly only when they ask
-questions about this tool, and not a software component.
+    If the user asks a question or indicates they're not sure, then it means
+    they're unsure. Note that this is explicitly only when they ask
+    questions about this tool, and not a software component.
 
-If the user talks about some infrastructure component, changes in priorization
-or provides more context, then it means they want to provide more information
-and want to continue the conversation. The user might also want to stop
-showing a component from the list, that would also mean they want to
-continue the conversation.
-""".format(extra=extra),
-        config=rt.rtconfig)
+    If the user talks about some infrastructure component, changes in priorization
+    or provides more context, then it means they want to provide more information
+    and want to continue the conversation. The user might also want to stop
+    showing a component from the list, that would also mean they want to
+    continue the conversation.
+    """.format(extra=extra),
+            config=rt.rtconfig)
+    except Exception:
+        eios = ExtraInfoOrStop(
+            explanation="Overriding this to continue due to LLM error",
+            continue_conversation=ContinueConversation.YES,
+        )
 
     if eios.continue_conversation == ContinueConversation.NO:
         return {
