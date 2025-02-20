@@ -177,11 +177,15 @@ Is there more information needed? Note that more information will help the assis
         continue_conversation = ContinueConversation(resp["continue_conversation"])
     except Exception as e:
         continue_conversation = continue_conversation=ContinueConversation.YES
+    
+    exp = resp["explanation"]
+    print(f"* {exp}")
 
     if continue_conversation == ContinueConversation.NO:
+        print("* Finishing the conversation...\n\n* Cheers!".format(exp))
         return {
             "messages": messages,
-            "answer": "The user has decided to stop the conversation.",
+            "answer": exp,
             "continue_conversation": continue_conversation,
         }
     elif continue_conversation == ContinueConversation.UNSURE:
@@ -196,9 +200,7 @@ Is there more information needed? Note that more information will help the assis
         }
 
     prompt = ChatPromptTemplate.from_messages([
-        ("user", "Here's extra context to help with the prioritization by the system administrator:\n\n"
-                 "{extra}.\n\n"
-                 "Given this new information, can you provide a better response?"),
+        ("user", prompts.PROVIDE_EXTRA_CONTEXT),
     ])
 
     prompt_msg = prompt.invoke({"extra": extra})
