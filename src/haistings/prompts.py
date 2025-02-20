@@ -47,18 +47,37 @@ Let the format of the report be markdown and look as follows:
 # This is the kickoff question the chatbot sends to the assistant.
 # It kicks off the conversation and provides the necessary context to start the task.
 # NOTE: This requires the usage of the following placeholders:
-# - {question}
-# - {context}
-# - {usercontext}
+# - {question} - The question the user asks the agent
+# - {context} - The list of images and their vulnerabilities
+# - {usercontext} - Extra context the user thinks is important
+# - {deployment_file_context} - If set, it'll contain additions to the prompt that are
+#                               specific to the deployment files. This is optional.
 # It has to be passed into a formatter.
-KICKOFF_USER_QUESTION = ("{question} Do the prioritization based on the following context:\n\n{context}\n\n"
-                         "The system administrator also provided the following context which is "
-                         "important for the prioritization:\n\n{usercontext}"
-                         # "In addition, this is the content of the Kubernetes configuration repository. "
-                         # "Use it only after you formed your answer based on the previous context. "
-                         # "Use it only to enhance the final report by making it more informative, "
-                         # "for example: Component X with CVE Y is described in file Z:\n\n{ingested_repo}\n\n."
-                         )
+KICKOFF_USER_QUESTION = """{question}
+
+{deployment_file_context}
+
+Do the prioritization based on the following information which is a list of vulnerabilities
+found in a scan with the relevant container images:
+
+{context}
+
+
+The system administrator also provided the following context which is
+important for the prioritization: {usercontext}
+"""
+
+# This is additional context that the system administrator provides to the assistant.
+# This is to help the assistant understand the context of the deployment.
+# NOTE: This requires the {ingested_repo} placeholder to be filled with the
+#       list of ingested files.
+DEPLOYMENT_FILE_CONTEXT = """The team is using the following files to deploy the given infrastructure:
+
+{ingested_repo}
+
+This is important context for the prioritization. Use file name references as part of the report
+to help the user understand the context better.
+"""
 
 
 # In case the chatbot picks up the conversation where it left off

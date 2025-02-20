@@ -119,7 +119,7 @@ def retrieve(state: State):
     report = rt.report()
 
     # Get repository context if configured in runtime
-    ingested_repo = "Unfortunately, no repository context was provided."
+    ingested_repo = ""
 
     try:
         summary, tree, content = rt.ingest_repo()
@@ -143,11 +143,16 @@ def generate_initial(state: State):
         messages = state["messages"] + \
            [HumanMessage(prompts.CONTINUE_FROM_CHECKPOINT)]
     else:
+        if state["ingested_repo"]:
+            file_context = prompts.DEPLOYMENT_FILE_CONTEXT.format(
+                ingested_repo=state["ingested_repo"])
+        else:
+            file_context = ""
         messages = rt.kickoff_prompt.invoke({
             "context": state["infrareport"],
-            "ingested_repo": state["ingested_repo"],
             "question": state["question"],
-            "usercontext": state["usercontext"]
+            "usercontext": state["usercontext"],
+            "deployment_file_context": file_context
         }).to_messages()
 
     response = rt.llm_invoke_with_streaming_print(messages)
