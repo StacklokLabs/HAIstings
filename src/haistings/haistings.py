@@ -4,6 +4,7 @@ import os
 import tempfile
 import re
 import sys
+from typing import List
 
 if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
@@ -11,12 +12,10 @@ if not os.environ.get("USER_AGENT"):
 
 from gitingest import ingest
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import START, END, StateGraph, MessagesState
-from pydantic import BaseModel, Field
 from enum import Enum
-from uuid import uuid4
 import git
 
 from haistings.k8sreport import buildVulnerabilityReport
@@ -135,6 +134,33 @@ class HAIstingsRuntime:
             ],
         )
 
+    def llm_invoke_with_streaming_print(self, messages: List[BaseMessage]) -> AIMessage:
+        msgid : str = ""
+        fullmsg : str = ""
+        thinking : bool = False
+
+        for chunk in self.llm.stream(messages, config=rt.rtconfig):
+            if not msgid:
+                # All messages from the stream are part of the same run.
+                msgid = chunk.id
+            # We store the raw message content for the response.
+            fullmsg += chunk.content
+
+            printable = preprocess_token(chunk.content, thinking)
+            if printable.thinking_token_in_stream == ThinkingTokenInStream.BEGIN:
+                print("* Thinking...")
+                thinking = True
+            elif printable.thinking_token_in_stream == ThinkingTokenInStream.END:
+                print("* ...Done")
+                print(text_separator())
+                thinking = False
+
+            if not thinking:
+                print(printable.output_token, end="")
+
+        return AIMessage(id=msgid, content=fullmsg)
+
+
 
 # Define application steps
 def retrieve(state: State):
@@ -176,8 +202,8 @@ def generate_initial(state: State):
             "question": state["question"],
             "usercontext": state["usercontext"]
         }).to_messages()
-    response = rt.llm.invoke(messages, config=rt.rtconfig)
-    print(preprocess_response(response.content))
+
+    response = rt.llm_invoke_with_streaming_print(messages)
 
     return {
         "messages": messages + [response],
@@ -259,8 +285,7 @@ DO NOT put the JSON within markdown tags or any other formatting.
     prompt_msg = prompt.invoke({"extra": extra})
     messages = messages + prompt_msg.to_messages()
 
-    response = rt.llm.invoke(messages, config=rt.rtconfig)
-    print(preprocess_response(response.content))
+    response = rt.llm_invoke_with_streaming_print(messages)
 
     return {
         "messages": prompt_msg.to_messages() + [response],
@@ -297,7 +322,33 @@ def ingest_repo(token: str, repo_url: str, subdir: str):
 
 
 def text_separator() -> str:
-    return "\n\n" + "=" * 120
+    return "\n" + "=" * 120
+
+
+class ThinkingTokenInStream(Enum):
+    BEGIN = 1
+    END = 2
+    NONE = 3
+
+
+class TokenStreamProcessing:
+    def __init__(self, output_token, ThinkingTokenInStream):
+        self.output_token = output_token
+        self.thinking_token_in_stream = ThinkingTokenInStream
+
+
+def preprocess_token(response: str, processing_thinking: bool) -> TokenStreamProcessing:
+    """Preprocess single-token response coming from an LLM.
+    
+    In this case, it'll search for thinking tokens and remove them."""
+    if "<think>" in response:
+        return TokenStreamProcessing("", ThinkingTokenInStream.BEGIN)
+    elif "</think>" in response:
+        return TokenStreamProcessing("", ThinkingTokenInStream.END)
+    elif processing_thinking:
+        return TokenStreamProcessing("", ThinkingTokenInStream.NONE)
+    else:
+        return TokenStreamProcessing(response, ThinkingTokenInStream.NONE)
 
 
 def preprocess_response(response: str) -> str:
