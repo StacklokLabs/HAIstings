@@ -104,6 +104,8 @@ Output the answer with a JSON format that looks as follows:
 
 ONLY answer with that JSON and don't provide any other information.
 DO NOT put the JSON within markdown tags or any other formatting.
+
+Format the explanation by talking directly to the user. e.g. "you've asked for more information, ..."
 """
 
 # This is the message the chatbot will send to the assistant when the user
