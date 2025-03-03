@@ -82,9 +82,11 @@ to help the user understand the context better.
 
 # In case the chatbot picks up the conversation where it left off
 # (which is done via checkpoint saving), it will ask this question to continue the conversation.
-CONTINUE_FROM_CHECKPOINT = ("Given all the context available, especially the extra "
-                                  "context provided by the system administrator, "
-                                  "Can you generate another prioritized report?")
+CONTINUE_FROM_CHECKPOINT = (
+    "Given all the context available, especially the extra "
+    "context provided by the system administrator, "
+    "Can you generate another prioritized report?"
+)
 
 
 # This helps categorize the user's response and guide the conversation
@@ -113,7 +115,8 @@ If the user talks about some infrastructure component, changes in priorization
 or provides more context, then it means they want to provide more information
 and want to continue the conversation. The user might also want to stop
 showing a component from the list, that would also mean they want to
-continue the conversation.
+continue the conversation. They might also want more information about
+types of components and how to upgrade them.
 
 Output the answer with a JSON format that looks as follows:
 {
