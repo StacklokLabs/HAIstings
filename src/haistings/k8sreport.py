@@ -1,4 +1,4 @@
-from typing import List, Set, Dict
+from typing import Dict, List, Set
 
 from kubernetes import client, config
 
@@ -76,12 +76,7 @@ class ImageWithVulns:
     def __eq__(self, other):
         if not isinstance(other, ImageWithVulns):
             return
-        return (
-            self.srv == other.srv
-            and self.img == other.img
-            and self.tag == other.tag
-            and self.digest == other.digest
-        )
+        return self.srv == other.srv and self.img == other.img and self.tag == other.tag and self.digest == other.digest
 
     # uniqueness is based on image + tag + digest
     def __hash__(self):
@@ -179,9 +174,7 @@ def gatherVulns() -> ReportResult:
 def getVulnList(vulns: list) -> List[VulnInfo]:
     vulnList = []
     for vuln in vulns:
-        vulnList.append(
-            VulnInfo(vuln["vulnerabilityID"], vuln["title"], vuln["severity"])
-        )
+        vulnList.append(VulnInfo(vuln["vulnerabilityID"], vuln["title"], vuln["severity"]))
     return vulnList
 
 

@@ -9,16 +9,17 @@ if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
     os.environ["USER_AGENT"] = "HAIstings/0.0.1"
 
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langchain_core.prompts import ChatPromptTemplate
-from langgraph.graph import START, END, StateGraph, MessagesState
 from enum import Enum
 
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph import END, START, MessagesState, StateGraph
+
+from haistings import prompts
 from haistings.k8sreport import buildVulnerabilityReport
 from haistings.memory import memory_factory
 from haistings.repo_ingest import ingest
-from haistings import prompts
 
 rt = None
 
@@ -146,9 +147,7 @@ def generate_initial(state: State):
         messages = state["messages"] + [HumanMessage(prompts.CONTINUE_FROM_CHECKPOINT)]
     else:
         if state["ingested_repo"]:
-            file_context = prompts.DEPLOYMENT_FILE_CONTEXT.format(
-                ingested_repo=state["ingested_repo"]
-            )
+            file_context = prompts.DEPLOYMENT_FILE_CONTEXT.format(ingested_repo=state["ingested_repo"])
         else:
             file_context = ""
         messages = rt.kickoff_prompt.invoke(
@@ -183,9 +182,7 @@ Is there more information needed? Note that more information will help the assis
     print(text_separator())
 
     try:
-        response = rt.llm.invoke(
-            prompts.USER_RESPONSE_CATEGORIZATION % extra, config=rt.rtconfig
-        )
+        response = rt.llm.invoke(prompts.USER_RESPONSE_CATEGORIZATION % extra, config=rt.rtconfig)
         processed = strip_code_markdown(preprocess_response(response.content))
         resp = json.loads(processed)
         continue_conversation = ContinueConversation(resp["continue_conversation"])
@@ -300,9 +297,7 @@ def do(
 ):
     global rt
 
-    rt = HAIstingsRuntime(
-        top, model, model_provider, api_key, base_url, repo_url, repo_subdir, gh_token
-    )
+    rt = HAIstingsRuntime(top, model, model_provider, api_key, base_url, repo_url, repo_subdir, gh_token)
 
     # Add memory
     memory = memory_factory(checkpointer_driver)
@@ -319,9 +314,7 @@ def do(
     graph_builder.add_edge("generate_initial", "extra_userinput")
 
     # allow for finishing execution after extra user input.
-    graph_builder.add_conditional_edges(
-        "extra_userinput", needs_more_info, ["extra_userinput", END]
-    )
+    graph_builder.add_conditional_edges("extra_userinput", needs_more_info, ["extra_userinput", END])
 
     # Compile the graph
     graph = graph_builder.compile(checkpointer=memory)
@@ -332,11 +325,7 @@ def do(
     if len(all_states) >= 1:
         # Override the configuration with the last state
         rt.rtconfig = all_states[0].config
-        print(
-            "Starting from checkpoint: {}".format(
-                rt.rtconfig["configurable"]["checkpoint_id"]
-            )
-        )
+        print("Starting from checkpoint: {}".format(rt.rtconfig["configurable"]["checkpoint_id"]))
 
     kickoff_question = "What are the top vulnerabilities in the infrastructure?"
 
@@ -353,9 +342,7 @@ def do(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Prioritize container image updates based on vulnerabilities"
-    )
+    parser = argparse.ArgumentParser(description="Prioritize container image updates based on vulnerabilities")
     parser.add_argument("--top", type=int, default=25, help="Number of images to list")
     parser.add_argument(
         "--model",
@@ -383,15 +370,9 @@ def main():
     # Pass notes as a file
     parser.add_argument("--notes", type=str, help="Path to a file containing notes")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-    parser.add_argument(
-        "--infra-repo", type=str, help="URL to your infrastructure repository"
-    )
-    parser.add_argument(
-        "--infra-repo-subdir", type=str, help="Subdirectory in the repository to ingest"
-    )
-    parser.add_argument(
-        "--gh-token", type=str, default="", help="GitHub PAT for the repository"
-    )
+    parser.add_argument("--infra-repo", type=str, help="URL to your infrastructure repository")
+    parser.add_argument("--infra-repo-subdir", type=str, help="Subdirectory in the repository to ingest")
+    parser.add_argument("--gh-token", type=str, default="", help="GitHub PAT for the repository")
 
     # Persistence
     parser.add_argument(

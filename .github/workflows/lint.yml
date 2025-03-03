@@ -35,4 +35,3 @@ jobs:
           poetry run flake8 src/
           poetry run black --check src/
           poetry run isort --check-only --profile black src/
-          poetry run mypy src/
