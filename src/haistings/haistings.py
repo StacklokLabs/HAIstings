@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import tempfile
 import re
 import sys
 from typing import List
@@ -10,18 +9,17 @@ if not os.environ.get("USER_AGENT"):
     # TODO: replace with proper version.
     os.environ["USER_AGENT"] = "HAIstings/0.0.1"
 
-from gitingest import ingest
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langchain_core.prompts import ChatPromptTemplate
-from langgraph.graph import START, END, StateGraph, MessagesState
 from enum import Enum
-import git
 
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph import END, START, MessagesState, StateGraph
+
+from haistings import prompts
 from haistings.k8sreport import buildVulnerabilityReport
 from haistings.memory import memory_factory
 from haistings.repo_ingest import ingest
-from haistings import prompts
 
 rt = None
 
@@ -51,8 +49,17 @@ class State(MessagesState):
 
 class HAIstingsRuntime:
 
-    def __init__(self, top: int, model: str, model_provider: str, api_key: str, base_url: str,
-                 repo_url: str = None, repo_subdir: str = None, gh_token: str = None):
+    def __init__(
+        self,
+        top: int,
+        model: str,
+        model_provider: str,
+        api_key: str,
+        base_url: str,
+        repo_url: str = None,
+        repo_subdir: str = None,
+        gh_token: str = None,
+    ):
         # This is not dynamic anymore as we want to access
         # The history of the conversation via the checkpointer.
         tid = "haistings-bot-thread"
@@ -72,7 +79,8 @@ class HAIstingsRuntime:
             # We're using CodeGate, no need to get an API Key here.
             api_key=api_key,
             # CodeGate Muxing API URL
-            base_url=base_url)
+            base_url=base_url,
+        )
 
         # Define prompt
         self.kickoff_prompt = ChatPromptTemplate.from_messages(
@@ -84,9 +92,9 @@ class HAIstingsRuntime:
         )
 
     def llm_invoke_with_streaming_print(self, messages: List[BaseMessage]) -> AIMessage:
-        msgid : str = ""
-        fullmsg : str = ""
-        thinking : bool = False
+        msgid: str = ""
+        fullmsg: str = ""
+        thinking: bool = False
 
         for chunk in self.llm.stream(messages, config=rt.rtconfig):
             if not msgid:
@@ -110,7 +118,6 @@ class HAIstingsRuntime:
         return AIMessage(id=msgid, content=fullmsg)
 
 
-
 # Define application steps
 def retrieve(state: State):
     if len(state["messages"]) > 0:
@@ -127,33 +134,30 @@ def retrieve(state: State):
     Summary: {summary}
     Structure: {tree}
     Content: {content}"""
-        print(f"Ingested repository successfully.")
+        print("Ingested repository successfully.")
     except Exception as e:
         print(f"Warning: Failed to ingest repository: {e}", file=sys.stderr)
 
-    return {
-        "infrareport": report,
-        "ingested_repo": ingested_repo
-    }
+    return {"infrareport": report, "ingested_repo": ingested_repo}
 
 
 def generate_initial(state: State):
     # Revisit the previous conversation
     if len(state["messages"]) > 0:
-        messages = state["messages"] + \
-           [HumanMessage(prompts.CONTINUE_FROM_CHECKPOINT)]
+        messages = state["messages"] + [HumanMessage(prompts.CONTINUE_FROM_CHECKPOINT)]
     else:
         if state["ingested_repo"]:
-            file_context = prompts.DEPLOYMENT_FILE_CONTEXT.format(
-                ingested_repo=state["ingested_repo"])
+            file_context = prompts.DEPLOYMENT_FILE_CONTEXT.format(ingested_repo=state["ingested_repo"])
         else:
             file_context = ""
-        messages = rt.kickoff_prompt.invoke({
-            "context": state["infrareport"],
-            "question": state["question"],
-            "usercontext": state["usercontext"],
-            "deployment_file_context": file_context
-        }).to_messages()
+        messages = rt.kickoff_prompt.invoke(
+            {
+                "context": state["infrareport"],
+                "question": state["question"],
+                "usercontext": state["usercontext"],
+                "deployment_file_context": file_context,
+            }
+        ).to_messages()
 
     response = rt.llm_invoke_with_streaming_print(messages)
 
@@ -166,47 +170,53 @@ def generate_initial(state: State):
 def extra_userinput(state: State):
     """Based on the user input, the assistant will provide a response."""
     messages = state["messages"]
-    inputmsg = text_separator() + """
+    inputmsg = (
+        text_separator()
+        + """
 Is there more information needed? Note that more information will help the assistant provide a better response.
 
 > """
+    )
     extra = input(inputmsg)
 
     print(text_separator())
 
     try:
-        response = rt.llm.invoke(prompts.USER_RESPONSE_CATEGORIZATION % extra,
-            config=rt.rtconfig)
+        response = rt.llm.invoke(prompts.USER_RESPONSE_CATEGORIZATION % extra, config=rt.rtconfig)
         processed = strip_code_markdown(preprocess_response(response.content))
         resp = json.loads(processed)
         continue_conversation = ContinueConversation(resp["continue_conversation"])
-    except Exception as e:
-        continue_conversation = continue_conversation=ContinueConversation.YES
-    
+    except Exception:
+        continue_conversation = continue_conversation = ContinueConversation.YES
+
     exp = resp["explanation"]
     print(f"* {exp}")
 
     if continue_conversation == ContinueConversation.NO:
-        print("* Finishing the conversation...\n\n* Cheers!".format(exp))
+        print("* Finishing the conversation...\n\n* Cheers!")
         return {
             "messages": messages,
             "answer": exp,
             "continue_conversation": continue_conversation,
         }
     elif continue_conversation == ContinueConversation.UNSURE:
-        print("The idea is to add more context on the given infrastructure to "
-              "help the assistant provide a better response.\n\n"
-              "You can also provide more context on the vulnerabilities "
-              "as well as override the priorization based on the new context.")
+        print(
+            "The idea is to add more context on the given infrastructure to "
+            "help the assistant provide a better response.\n\n"
+            "You can also provide more context on the vulnerabilities "
+            "as well as override the priorization based on the new context."
+        )
         return {
             "messages": messages,
             "answer": "The user is unsure about continuing the conversation.",
             "continue_conversation": continue_conversation,
         }
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("user", prompts.PROVIDE_EXTRA_CONTEXT),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("user", prompts.PROVIDE_EXTRA_CONTEXT),
+        ]
+    )
 
     prompt_msg = prompt.invoke({"extra": extra})
     messages = messages + prompt_msg.to_messages()
@@ -216,7 +226,7 @@ Is there more information needed? Note that more information will help the assis
     return {
         "messages": prompt_msg.to_messages() + [response],
         "answer": response.content,
-        "continue_conversation": continue_conversation
+        "continue_conversation": continue_conversation,
     }
 
 
@@ -244,7 +254,7 @@ class TokenStreamProcessing:
 
 def preprocess_token(response: str, processing_thinking: bool) -> TokenStreamProcessing:
     """Preprocess single-token response coming from an LLM.
-    
+
     In this case, it'll search for thinking tokens and remove them."""
     if "<think>" in response:
         return TokenStreamProcessing("", ThinkingTokenInStream.BEGIN)
@@ -258,7 +268,7 @@ def preprocess_token(response: str, processing_thinking: bool) -> TokenStreamPro
 
 def preprocess_response(response: str) -> str:
     """Preprocesses the response coming from an LLM.
-    
+
     In this case, it'll only search for thinking tokens and remove them."""
 
     # Remove thinking tokens. These are all the characters between the <think> and </think> tags
@@ -273,8 +283,18 @@ def strip_code_markdown(text: str) -> str:
     return re.sub(r"```\w+?\n(.*?)```", r"\1", text, flags=re.DOTALL)
 
 
-def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, notes: str, checkpointer_driver: str,
-       repo_url: str = None, repo_subdir: str = None, gh_token: str = None):
+def do(
+    top: int,
+    model: str,
+    model_provider: str,
+    api_key: str,
+    base_url: str,
+    notes: str,
+    checkpointer_driver: str,
+    repo_url: str = None,
+    repo_subdir: str = None,
+    gh_token: str = None,
+):
     global rt
 
     rt = HAIstingsRuntime(top, model, model_provider, api_key, base_url, repo_url, repo_subdir, gh_token)
@@ -294,11 +314,7 @@ def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, n
     graph_builder.add_edge("generate_initial", "extra_userinput")
 
     # allow for finishing execution after extra user input.
-    graph_builder.add_conditional_edges(
-        "extra_userinput",
-        needs_more_info,
-        ["extra_userinput", END]
-    )
+    graph_builder.add_conditional_edges("extra_userinput", needs_more_info, ["extra_userinput", END])
 
     # Compile the graph
     graph = graph_builder.compile(checkpointer=memory)
@@ -314,23 +330,43 @@ def do(top: int, model: str, model_provider: str, api_key: str, base_url: str, n
     kickoff_question = "What are the top vulnerabilities in the infrastructure?"
 
     # Start the conversation
-    for chunk in graph.stream({
-        "question": kickoff_question,
-        "usercontext": notes,
-    }, config=rt.rtconfig, stream_mode="messages"):
+    for chunk in graph.stream(
+        {
+            "question": kickoff_question,
+            "usercontext": notes,
+        },
+        config=rt.rtconfig,
+        stream_mode="messages",
+    ):
         pass
 
 
 def main():
     parser = argparse.ArgumentParser(description="Prioritize container image updates based on vulnerabilities")
     parser.add_argument("--top", type=int, default=25, help="Number of images to list")
-    parser.add_argument("--model", type=str, default="this-makes-no-difference-to-codegate",
-                        help="Model to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
-    parser.add_argument("--model-provider", type=str, default="openai",)
-    parser.add_argument("--api-key", type=str, default="fake-api-key",
-                        help="API Key to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.")
-    parser.add_argument("--base-url", type=str, default="http://127.0.0.1:8989/v1/mux",
-                        help="Base URL to use. Points to CodeGate Muxing endpoint by default.")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="this-makes-no-difference-to-codegate",
+        help="Model to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.",
+    )
+    parser.add_argument(
+        "--model-provider",
+        type=str,
+        default="openai",
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default="fake-api-key",
+        help="API Key to use. Note that if you're using CodeGate with Muxing, this parameter is ignored.",
+    )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        default="http://127.0.0.1:8989/v1/mux",
+        help="Base URL to use. Points to CodeGate Muxing endpoint by default.",
+    )
     # Pass notes as a file
     parser.add_argument("--notes", type=str, help="Path to a file containing notes")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
@@ -339,9 +375,13 @@ def main():
     parser.add_argument("--gh-token", type=str, default="", help="GitHub PAT for the repository")
 
     # Persistence
-    parser.add_argument("--checkpoint-saver-driver", type=str, default="memory",
-                        choices=["memory", "sqlite"],
-                        help="Checkpoint saver driver to use")
+    parser.add_argument(
+        "--checkpoint-saver-driver",
+        type=str,
+        default="memory",
+        choices=["memory", "sqlite"],
+        help="Checkpoint saver driver to use",
+    )
     args = parser.parse_args()
 
     # Read notes from file
@@ -351,8 +391,18 @@ def main():
     else:
         notes = ""
 
-    do(args.top, args.model, args.model_provider, args.api_key, args.base_url, notes, args.checkpoint_saver_driver,
-       args.infra_repo, args.infra_repo_subdir, args.gh_token)
+    do(
+        args.top,
+        args.model,
+        args.model_provider,
+        args.api_key,
+        args.base_url,
+        notes,
+        args.checkpoint_saver_driver,
+        args.infra_repo,
+        args.infra_repo_subdir,
+        args.gh_token,
+    )
 
 
 if __name__ == "__main__":

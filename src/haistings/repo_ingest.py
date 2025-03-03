@@ -1,8 +1,9 @@
-import tempfile
-import git
 import os
+import tempfile
 
+import git
 from gitingest import ingest as repo_ingest
+
 
 def ingest(token: str, repo_url: str, subdir: str):
     """Ingest a repository and return a report.
