@@ -1,7 +1,7 @@
 import json
-import sh
+from typing import List, Set, Dict
 
-from typing import List, Set, Tuple, Dict
+from kubernetes import client, config
 
 
 class VulnInfo:
@@ -76,8 +76,22 @@ class ReportResult:
 
 
 def gatherVulns() -> ReportResult:
-    vulnsjson = sh.kubectl("get", "vulns", "-A", "-o", "json")
-    vulns = json.loads(vulnsjson)
+    # Load the kube config
+    try:
+        config.load_kube_config()
+    except config.config_exception.ConfigException:
+        # If running inside a pod, use the service account credentials
+        config.load_incluster_config()
+    
+    # Create a custom objects API instance
+    api = client.CustomObjectsApi()
+    
+    # Get all vulns across all namespaces
+    vulns = api.list_cluster_custom_object(
+        group="aquasecurity.github.io",
+        version="v1alpha1",
+        plural="vulnerabilityreports"
+    )
 
     imgvulns = set()
     totalCritical = 0
