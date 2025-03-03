@@ -24,6 +24,10 @@ kubernetes = "^32.0.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
+flake8 = "^7.0.0"
+black = "^24.3.0"
+isort = "^5.13.2"
+mypy = "^1.9.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -31,3 +35,19 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 haistings = "haistings.haistings:main"
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+include = ".pyi?$"
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
