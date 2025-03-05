@@ -2625,23 +2625,23 @@ testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
 name = "poetry-dynamic-versioning"
-version = "1.2.0"
+version = "1.7.1"
 description = "Plugin for Poetry to enable dynamic versioning based on VCS tags"
 optional = false
-python-versions = ">=3.7,<4.0"
+python-versions = "<4.0,>=3.7"
 groups = ["dev"]
 files = [
-    {file = "poetry_dynamic_versioning-1.2.0-py3-none-any.whl", hash = "sha256:8dbef9728d866eb3d1a4edbb29c7ac8abdf96e3ca659473e950e2c016f3785ec"},
-    {file = "poetry_dynamic_versioning-1.2.0.tar.gz", hash = "sha256:1a7bbdba2530499e73dfc6ac0af19de29020ab4aaa3e507573877114e6b71ed6"},
+    {file = "poetry_dynamic_versioning-1.7.1-py3-none-any.whl", hash = "sha256:70a4a54bee89aef276e3f2f8841f10a6f140b19c5aeb371a1a6095f84fcbe7b1"},
+    {file = "poetry_dynamic_versioning-1.7.1.tar.gz", hash = "sha256:7304b8459af7b7114cd83429827c4d3d8b7d29df4129dde8dff61c76f93faaa3"},
 ]
 
 [package.dependencies]
-dunamai = ">=1.18.0,<2.0.0"
+dunamai = ">=1.21.0,<2.0.0"
 jinja2 = ">=2.11.1,<4"
 tomlkit = ">=0.4"
 
 [package.extras]
-plugin = ["poetry (>=1.2.0,<2.0.0)"]
+plugin = ["poetry (>=1.2.0)"]
 
 [[package]]
 name = "propcache"
@@ -4782,4 +4782,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "f5cfcf3ecb779bee1e64dc9e85fecf7019ab739853c272d836667a14660119b8"
+content-hash = "ffb2e3c1c14ec143fecc0f88f85a25c82c08458f6f75659c75b6d52782ea9770"
