@@ -13,6 +13,7 @@ HAIstings analyzes vulnerability reports from tools like trivy-operator, generat
 - **Infrastructure Context**: Ingests infrastructure repository information to provide more relevant recommendations
 - **Persistent Memory**: Maintains conversation history across sessions using checkpoints
 - **Customizable Output**: Adjusts recommendations based on user-provided context
+- **Retrieval-Augmented Generation (RAG)**: Selectively includes only relevant infrastructure files in the context, reducing overall context size and improving performance
 
 ## Installation
 
@@ -87,6 +88,18 @@ For a specific subdirectory:
 haistings --infra-repo https://github.com/yourusername/infra-repo --infra-repo-subdir kubernetes --gh-token YOUR_GITHUB_TOKEN
 ```
 
+### RAG Configuration
+
+Control the Retrieval-Augmented Generation functionality:
+
+```bash
+# Disable RAG (use traditional approach)
+haistings --use-vectordb false
+
+# Specify maximum number of relevant files per component
+haistings --max-relevant-files 10
+```
+
 ### Persistent Conversations
 
 Use SQLite to persist conversation history:
@@ -98,16 +111,18 @@ haistings --checkpoint-saver-driver sqlite
 ### Full Example
 
 ```bash
-haistings --top 30 --notes usercontext.txt --infra-repo https://github.com/yourusername/infra-repo --checkpoint-saver-driver sqlite
+haistings --top 30 --notes usercontext.txt --infra-repo https://github.com/yourusername/infra-repo --max-relevant-files 8 --checkpoint-saver-driver sqlite
 ```
 
 ## How It Works
 
 1. **Vulnerability Collection**: HAIstings connects to your Kubernetes cluster and collects vulnerability reports from trivy-operator.
 2. **Prioritization**: Vulnerabilities are prioritized based on severity (critical vulnerabilities are weighted 10x more than high vulnerabilities).
-3. **Context Integration**: User-provided context and infrastructure repository information are integrated into the analysis.
-4. **Report Generation**: A prioritized report is generated in a conversational style inspired by Arthur Hastings.
-5. **Interactive Refinement**: HAIstings engages in a conversation to gather more context and refine its recommendations.
+3. **Repository Ingestion**: Infrastructure repository files are ingested and stored in a vector database for efficient retrieval.
+4. **Relevant File Retrieval**: Using RAG (Retrieval-Augmented Generation), only the most relevant files for each vulnerability are retrieved based on similarity search.
+5. **Context Integration**: User-provided context and relevant infrastructure files are integrated into the analysis.
+6. **Report Generation**: A prioritized report is generated in a conversational style inspired by Arthur Hastings.
+7. **Interactive Refinement**: HAIstings engages in a conversation to gather more context and refine its recommendations.
 
 ## Command Line Options
 
@@ -119,6 +134,8 @@ haistings --top 30 --notes usercontext.txt --infra-repo https://github.com/youru
 | `--infra-repo-subdir` | Subdirectory in the repository to ingest | None |
 | `--gh-token` | GitHub Personal Access Token for private repositories | None |
 | `--checkpoint-saver-driver` | Memory persistence driver (`memory` or `sqlite`) | `memory` |
+| `--use-vectordb` | Use vector database for repository ingestion | `true` |
+| `--max-relevant-files` | Maximum number of relevant files per component | 5 |
 | `--debug` | Enable debug mode | False |
 | `--model` | LLM model to use (when not using CodeGate) | `this-makes-no-difference-to-codegate` |
 | `--model-provider` | Model provider | `openai` |
@@ -197,7 +214,6 @@ poetry run flake8
 
 ## Future Improvements / TODO
 
-- **RAG for Infrastructure Files**: Implement Retrieval-Augmented Generation to selectively include only relevant infrastructure files in the context, reducing overall context size and improving performance.
 - **Custom Vulnerability Scoring**: Add support for custom vulnerability scoring based on user-defined criteria beyond just severity.
 - **Integration with More Scanners**: Extend beyond trivy-operator to support other vulnerability scanners.
 - **Visualization Dashboard**: Create a web interface to visualize vulnerability reports and trends over time.

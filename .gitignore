@@ -2,3 +2,7 @@
 __pycache__/
 dist/
 .idea/
+
+# vectordb files
+.embeddings_cache/
+.haistings*.db
