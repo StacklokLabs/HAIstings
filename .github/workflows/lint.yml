@@ -28,9 +28,10 @@ jobs:
         run: poetry install --no-interaction
         
       - name: Add linting tools
-        run: poetry add --group dev flake8 black isort mypy
+        run: poetry add --group dev flake8 black isort mypy bandit
         
       - name: Run linters
         run: |
           poetry run black --check src/
           poetry run isort --check-only --profile black src/
+          poetry run bandit -r src/ -c pyproject.toml
