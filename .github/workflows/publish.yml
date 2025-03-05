@@ -35,6 +35,12 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
         
+      - name: Update version from git tag
+        run: poetry version $(poetry run poetry-dynamic-versioning show)
+        
+      - name: Display version
+        run: poetry version
+        
       - name: Build package
         run: poetry build
         
