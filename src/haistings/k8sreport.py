@@ -111,6 +111,36 @@ class ReportResult:
         self.total_critical = total_critical
         self.total_high = total_high
 
+    def buildreport(self, top: int) -> str:
+        out = "# Vulnerability report\n\n"
+
+        out += "## Showing top {} images with most critical vulnerabilities".format(top)
+
+        imgvulns = self.images_with_vulns
+
+        if len(imgvulns) == 0:
+            out += "\nNo vulnerabilities found"
+            return out
+
+        if top > len(imgvulns):
+            top = len(imgvulns)
+
+        count = 0
+        for img in sorted(imgvulns, reverse=True):
+            out += str(img)
+            if count == top:
+                break
+            count += 1
+
+        out += "\n\n## Vulnerability list\n\n"
+        out += "\n".join(str(vuln) for _, vuln in self.vuln_list.items())
+
+        out += "\n\n## Summary\n\n"
+        out += "Total critical vulnerabilities: {}\n".format(self.total_critical)
+        out += "Total high vulnerabilities: {}\n".format(self.total_high)
+
+        return out
+
 
 def gatherVulns() -> ReportResult:
     # Load the kube config
@@ -176,40 +206,3 @@ def getVulnList(vulns: list) -> List[VulnInfo]:
     for vuln in vulns:
         vulnList.append(VulnInfo(vuln["vulnerabilityID"], vuln["title"], vuln["severity"]))
     return vulnList
-
-
-def buildreport(res: ReportResult, top: int) -> str:
-    out = "# Vulnerability report\n\n"
-
-    out += "## Showing top {} images with most critical vulnerabilities".format(top)
-
-    imgvulns = res.images_with_vulns
-
-    if len(imgvulns) == 0:
-        out += "\nNo vulnerabilities found"
-        return out
-
-    if top > len(imgvulns):
-        top = len(imgvulns)
-
-    count = 0
-    for img in sorted(imgvulns, reverse=True):
-        out += str(img)
-        if count == top:
-            break
-        count += 1
-
-    out += "\n\n## Vulnerability list\n\n"
-    out += "\n".join(str(vuln) for _, vuln in res.vuln_list.items())
-
-    out += "\n\n## Summary\n\n"
-    out += "Total critical vulnerabilities: {}\n".format(res.total_critical)
-    out += "Total high vulnerabilities: {}\n".format(res.total_high)
-
-    return out
-
-
-def buildVulnerabilityReport(top: int) -> str:
-    res = gatherVulns()
-
-    return buildreport(res, top)

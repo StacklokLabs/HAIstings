@@ -17,9 +17,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, MessagesState, StateGraph
 
 from haistings import prompts
-from haistings.k8sreport import buildVulnerabilityReport
+from haistings.k8sreport import ReportResult, gatherVulns
 from haistings.memory import memory_factory
-from haistings.repo_ingest import ingest
+from haistings.repo_ingest import ingest, retrieve_relevant_files
+from haistings.vector_db import build_query_from_report_result
 
 rt = None
 
@@ -59,6 +60,8 @@ class HAIstingsRuntime:
         repo_url: str = None,
         repo_subdir: str = None,
         gh_token: str = None,
+        use_vectordb: bool = True,
+        max_relevant_files: int = 5,
     ):
         # This is not dynamic anymore as we want to access
         # The history of the conversation via the checkpointer.
@@ -69,9 +72,15 @@ class HAIstingsRuntime:
                 "checkpoint_ns": "",
             },
         }
+        # Store the top value for use in the retrieve function
+        self.top = top
+        self.repo_url = repo_url
+        self.use_vectordb = use_vectordb
+        self.max_relevant_files = max_relevant_files
+
         ## TODO: Make this configurable
-        self.report = lambda: buildVulnerabilityReport(top)
-        self.ingest_repo = lambda: ingest(gh_token, repo_url, repo_subdir)
+        self.report = lambda: gatherVulns()
+        self.ingest_repo = lambda: ingest(gh_token, repo_url, repo_subdir, use_vectordb=use_vectordb)
         self.llm = init_chat_model(
             # We're using CodeGate's Muxing feature. No need to select a model here.
             model,
@@ -123,22 +132,85 @@ def retrieve(state: State):
     if len(state["messages"]) > 0:
         return {}
 
-    report = rt.report()
+    report_result = rt.report()
+    report = report_result.buildreport(rt.top)  # Using the top value from HAIstingsRuntime
 
     # Get repository context if configured in runtime
     ingested_repo = ""
 
     try:
         summary, tree, content = rt.ingest_repo()
-        ingested_repo = f"""Repository Context:
+
+        if rt.use_vectordb and rt.repo_url:
+            # Use vector database to retrieve relevant files
+            ingested_repo = get_relevant_files_for_report(report_result, rt.repo_url, rt.max_relevant_files)
+        else:
+            # Use traditional approach
+            ingested_repo = f"""Repository Context:
     Summary: {summary}
     Structure: {tree}
     Content: {content}"""
+
         print("Ingested repository successfully.")
     except Exception as e:
         print(f"Warning: Failed to ingest repository: {e}", file=sys.stderr)
 
     return {"infrareport": report, "ingested_repo": ingested_repo}
+
+
+def get_relevant_files_for_report(report_result: ReportResult, repo_url: str, max_files: int = 5) -> str:
+    """Get relevant files for the report using the vector database.
+
+    Args:
+        report_result: The ReportResult object
+        repo_url: URL of the repository
+        max_files: Maximum number of files to include per component
+
+    Returns:
+        A string containing the relevant files
+    """
+    if not report_result or not report_result.images_with_vulns:
+        return ""
+
+    # Get the top vulnerable images
+    top_images = sorted(report_result.images_with_vulns, reverse=True)[:10]
+
+    all_relevant_files = []
+
+    # For each image, retrieve relevant files
+    for img in top_images:
+        # Extract component name from image
+        component_name = img.img.split("/")[-1]
+
+        # Build query from the image
+        query = build_query_from_report_result(report_result, component_name)
+
+        # Retrieve relevant files
+        relevant_files = retrieve_relevant_files(repo_url, query, k=max_files)
+
+        if relevant_files:
+            all_relevant_files.append({"component": component_name, "files": relevant_files})
+
+    # Format the output
+    if not all_relevant_files:
+        return ""
+
+    output = "Repository Context:\n"
+    output += f"Summary: Retrieved {sum(len(comp['files']) for comp in all_relevant_files)} relevant files for {len(all_relevant_files)} components\n\n"
+
+    for component_data in all_relevant_files:
+        component = component_data["component"]
+        files = component_data["files"]
+
+        output += f"Component: {component}\n"
+
+        for file in files:
+            output += f"  File: {file['path']}\n"
+            output += (
+                f"  Content:\n```\n{file['content'][:1000]}{'...' if len(file['content']) > 1000 else ''}\n```\n\n"
+            )
+
+    return output
 
 
 def generate_initial(state: State):
@@ -294,10 +366,14 @@ def do(
     repo_url: str = None,
     repo_subdir: str = None,
     gh_token: str = None,
+    use_vectordb: bool = True,
+    max_relevant_files: int = 5,
 ):
     global rt
 
-    rt = HAIstingsRuntime(top, model, model_provider, api_key, base_url, repo_url, repo_subdir, gh_token)
+    rt = HAIstingsRuntime(
+        top, model, model_provider, api_key, base_url, repo_url, repo_subdir, gh_token, use_vectordb, max_relevant_files
+    )
 
     # Add memory
     memory = memory_factory(checkpointer_driver)
@@ -382,6 +458,21 @@ def main():
         choices=["memory", "sqlite"],
         help="Checkpoint saver driver to use",
     )
+
+    # Vector database options
+    parser.add_argument(
+        "--use-vectordb",
+        action="store_true",
+        default=True,
+        help="Use vector database for repository ingestion (default: True)",
+    )
+    parser.add_argument(
+        "--max-relevant-files",
+        type=int,
+        default=5,
+        help="Maximum number of relevant files to include per component (default: 5)",
+    )
+
     args = parser.parse_args()
 
     # Read notes from file
@@ -402,6 +493,8 @@ def main():
         args.infra_repo,
         args.infra_repo_subdir,
         args.gh_token,
+        args.use_vectordb,
+        args.max_relevant_files,
     )
 
 
