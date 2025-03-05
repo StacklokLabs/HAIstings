@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "haistings"
-version = "0.0.1"  # This will be overridden by poetry-dynamic-versioning
+version = "0.0.0"  # This will be overridden by poetry-dynamic-versioning
 description = "AI-powered CVE prioritizer"
 authors = ["Stacklok Inc"]
 license = "Apache-2.0"
@@ -37,7 +37,7 @@ bandit = "1.7.8"
 poetry-dynamic-versioning = "1.7.1"
 
 [build-system]
-requires = ["poetry-core==1.8.1", "poetry-dynamic-versioning==1.2.0"]
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
 build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry.scripts]
@@ -68,3 +68,4 @@ targets = ["src"]
 enable = true
 vcs = "git"
 style = "semver"
+pattern = "v(?P<base>.*)"
