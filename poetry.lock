@@ -1591,18 +1591,18 @@ msgpack = ">=1.1.0,<2.0.0"
 
 [[package]]
 name = "langgraph-checkpoint-sqlite"
-version = "2.0.5"
+version = "2.0.6"
 description = "Library with a SQLite implementation of LangGraph checkpoint saver."
 optional = false
 python-versions = "<4.0.0,>=3.9.0"
 groups = ["main"]
 files = [
-    {file = "langgraph_checkpoint_sqlite-2.0.5-py3-none-any.whl", hash = "sha256:479a1851d5e91c1e15b95ca54cc75c9bd60896824c21f559dac2eaa10e49453f"},
-    {file = "langgraph_checkpoint_sqlite-2.0.5.tar.gz", hash = "sha256:13e6b6f1149e7858b7ef16a4a8b1c86967961dad62b711d3eb1c35ede501d12c"},
+    {file = "langgraph_checkpoint_sqlite-2.0.6-py3-none-any.whl", hash = "sha256:d4aae7d72c728093f4296266020bf912f3c1e335e27987aa7f63dd22c9ae48c2"},
+    {file = "langgraph_checkpoint_sqlite-2.0.6.tar.gz", hash = "sha256:a58e8371f48854ddc5231bf9a3c3b38679abe2175e7357200f90ba62f3f97ddd"},
 ]
 
 [package.dependencies]
-aiosqlite = ">=0.20.0,<0.21.0"
+aiosqlite = ">=0.20,<0.22"
 langgraph-checkpoint = ">=2.0.15,<3.0.0"
 
 [[package]]
@@ -4801,4 +4801,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "bca935614540c7af20a2d845d06781a698ba50a18cdd9cb7e20bfb0405bbeee1"
+content-hash = "421955fb5860eed1173e6c0e7bc0997774c17a79e63253e5eb9ea512dec60a56"
