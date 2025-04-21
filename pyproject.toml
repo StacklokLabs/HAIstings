@@ -14,7 +14,7 @@ python = ">=3.12,<3.13"
 langchain = {extras = ["openai"], version = "0.3.18"}
 langchain-community = "0.3.17"
 langchainhub = "0.1.21"
-langgraph = {extras = ["sqlite"], version = "0.2.73"}
+langgraph = {extras = ["sqlite"], version = "0.3.31"}
 argparse = "1.4.0"
 gitingest = "0.1.3"
 gitpython = "3.1.44"
