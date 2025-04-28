@@ -11,7 +11,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-langchain = {extras = ["openai"], version = "0.3.18"}
+langchain = {extras = ["openai"], version = "0.3.24"}
 langchain-community = "0.3.17"
 langchainhub = "0.1.21"
 langgraph = {extras = ["sqlite"], version = "0.2.73"}
