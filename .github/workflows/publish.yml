@@ -45,6 +45,6 @@ jobs:
         run: poetry build
         
       - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1.12
+        uses: pypa/gh-action-pypi-publish@release/v1.13
         # No need to specify username/password as this uses OpenID Connect
         # for trusted publisher authentication
